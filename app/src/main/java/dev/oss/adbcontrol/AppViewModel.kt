@@ -434,8 +434,23 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             } else {
                 "pm install-multiple -r ${remote.joinToString(" ")}"
             }
-            val output = adb.shell(command) ?: ""
-            if (output.contains("Success")) ok++ else failures += "$groupName: ${output.trim().take(160)}"
+            var output = adb.shell(command) ?: ""
+            var replaced = false
+            if (!output.contains("Success") && needsUninstall(output)) {
+                val pkg = archivePackageName(apks.first())
+                if (pkg != null) {
+                    emit("توقيع النسخة القديمة مختلف — حذف $pkg وإعادة التثبيت…")
+                    adb.shell("pm uninstall $pkg")
+                    output = adb.shell(command) ?: output
+                    replaced = output.contains("Success")
+                }
+            }
+            if (output.contains("Success")) {
+                ok++
+                if (replaced) emit("$groupName: حُذفت النسخة القديمة (توقيع مختلف) وثُبّتت الجديدة")
+            } else {
+                failures += "$groupName: ${installHint(output)}"
+            }
             adb.shell("rm -f ${remote.joinToString(" ")}")
         }
         return buildString {
@@ -443,6 +458,43 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             if (failures.isNotEmpty()) append("\n").append(failures.first())
         }
     }
+
+
+    private fun needsUninstall(output: String): Boolean {
+        val lower = output.lowercase()
+        return lower.contains("update_incompatible") ||
+            lower.contains("signatures do not match") ||
+            lower.contains("signature mismatch")
+    }
+
+    private fun installHint(output: String): String {
+        val lower = output.lowercase()
+        return when {
+            needsUninstall(output) ->
+                "توقيع النسخة المثبتة مختلف (نسخة معدّلة) — احذف التطبيق القديم ثم أعد التثبيت"
+            lower.contains("version_downgrade") ->
+                "النسخة المثبتة أحدث من الملف — احذف التطبيق أو استخدم ملفاً أحدث"
+            lower.contains("user_restricted") ->
+                "الجهاز يمنع التثبيت عبر USB — فعّل «Install via USB» في خيارات المطور"
+            lower.contains("insufficient_storage") ->
+                "لا توجد مساحة كافية على الجهاز"
+            lower.contains("invalid_apk") || lower.contains("parse_failed") ->
+                "ملف APK غير صالح (تالف أو ناقص)"
+            lower.contains("blocked") || lower.contains("aborted") ->
+                "تم رفض التثبيت من النظام (Play Protect أو سياسة الجهاز)"
+            lower.contains("no space") -> "لا توجد مساحة كافية على الجهاز"
+            else -> output.trim().take(200)
+        }
+    }
+
+    private fun archivePackageName(apk: File): String? = runCatching {
+        val context = getApplication<Application>()
+        val info = context.packageManager.getPackageArchiveInfo(
+            apk.absolutePath,
+            android.content.pm.PackageManager.GET_ACTIVITIES
+        )
+        info?.packageName
+    }.getOrNull()
 
     private fun extractArchive(archive: File): List<Pair<String, List<File>>> {
         val root = File(archive.parentFile, "extract-${System.currentTimeMillis()}").apply { mkdirs() }
