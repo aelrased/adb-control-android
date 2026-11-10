@@ -157,7 +157,15 @@ class AdbManager(private val context: Context) {
             )
             Result.success(device)
         } catch (t: Throwable) {
-            _state.value = _state.value.copy(busy = false, message = "تعذّر الاتصال: ${t.message}")
+            val hint = if (host == "127.0.0.1" || host == "localhost") {
+                " — وافق على Allow USB debugging على شاشة الجهاز ثم أعد المحاولة"
+            } else {
+                ""
+            }
+            _state.value = _state.value.copy(
+                busy = false,
+                message = "تعذّر الاتصال: ${t.message}$hint"
+            )
             Result.failure(t)
         }
     }

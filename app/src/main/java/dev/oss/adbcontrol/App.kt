@@ -10,6 +10,8 @@ import java.io.File
 class App : Application() {
     override fun onCreate() {
         super.onCreate()
+        // Android 9 needs this so parsed RSA keys keep their CRT parameters.
+        RsaCrtFix.install()
         // Persist the ADB host identity so pairing survives app restarts.
         val keyFile = File(filesDir, "adbkey.pem")
         // Key generation can take seconds on slow TV boxes; never block the main thread.

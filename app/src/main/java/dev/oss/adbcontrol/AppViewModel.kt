@@ -3,6 +3,7 @@ package dev.oss.adbcontrol
 import android.app.Application
 import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
 import android.net.Uri
 import android.provider.Settings
 import androidx.lifecycle.AndroidViewModel
@@ -15,6 +16,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.net.Inet4Address
+import java.net.NetworkInterface
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
@@ -268,6 +271,73 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             emit("تم ${if (enable) "استعادة" else "تعطيل"} $done/${packages.size} حزمة")
             reloadApps()
         }
+    }
+
+    fun connectLocal() {
+        viewModelScope.launch {
+            val context = getApplication<Application>()
+            val ip = localWifiIp(context)
+            val targets = buildList {
+                if (ip != null) add(ip to 5555)
+                add("127.0.0.1" to 5555)
+            }.distinct()
+
+            var lastError: String? = null
+            for ((host, port) in targets) {
+                var attempts = 0
+                var waiting = false
+                while (attempts < 10) {
+                    attempts++
+                    emit(
+                        if (waiting) {
+                            "بانتظار الموافقة على «Allow USB debugging»… ($host:$port)"
+                        } else {
+                            "محاولة الاتصال بـ $host:$port…"
+                        }
+                    )
+                    val result = adb.addDevice(host, port, null, null)
+                    if (result.isSuccess) {
+                        emit("تم الاتصال بالجهاز محلياً: $host:$port")
+                        refresh()
+                        return@launch
+                    }
+                    val error = result.exceptionOrNull()?.message.orEmpty()
+                    lastError = error
+                    val needsAuth = error.contains("unauthorized", true) ||
+                        error.contains("authoriz", true) ||
+                        error.contains("authenticat", true)
+                    if (!needsAuth) break
+                    waiting = true
+                    kotlinx.coroutines.delay(4000)
+                }
+            }
+            emit(
+                "تعذّر الاتصال المحلي" +
+                    (lastError?.let { ": $it" } ?: "") +
+                    " — وافق على Allow USB debugging على شاشة الجهاز ثم أعد المحاولة"
+            )
+        }
+    }
+
+    private fun localWifiIp(context: android.content.Context): String? {
+        runCatching {
+            val manager = context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val network = manager.activeNetwork ?: return@runCatching null
+            val props = manager.getLinkProperties(network) ?: return@runCatching null
+            return@runCatching props.linkAddresses
+                .map { it.address }
+                .firstOrNull { it is Inet4Address && !it.isLoopbackAddress }
+                ?.hostAddress
+        }.getOrNull()?.let { return it }
+
+        return runCatching {
+            NetworkInterface.getNetworkInterfaces().toList()
+                .flatMap { it.inetAddresses.toList() }
+                .firstOrNull {
+                    it is Inet4Address && !it.isLoopbackAddress && it.isSiteLocalAddress
+                }
+                ?.hostAddress
+        }.getOrNull()
     }
 
     fun installApk(uri: Uri) {

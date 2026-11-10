@@ -270,6 +270,10 @@ private fun Root(vm: AppViewModel) {
             onStart = { vm.startSelfPairing() },
             onPair = { vm.pairSelf(it) },
             onConnect = { vm.connectSelf() },
+            onLocal = {
+                vm.connectLocal()
+                showPairing = false
+            },
             onClose = { showPairing = false }
         )
     }
@@ -748,6 +752,7 @@ private fun PairingDialog(
     onStart: () -> Unit,
     onPair: (String) -> Unit,
     onConnect: () -> Unit,
+    onLocal: () -> Unit,
     onClose: () -> Unit
 ) {
     var code by remember { mutableStateOf("") }
@@ -786,6 +791,14 @@ private fun PairingDialog(
                 if (adb.message.isNotEmpty()) {
                     Text(adb.message, fontSize = 11.sp, color = Color(0xFFFFCF70), modifier = Modifier.padding(top = 6.dp))
                 }
+                TextButton(onClick = onLocal) {
+                    Text("استخدام هذا الجهاز (IP الواي فاي تلقائياً)")
+                }
+                Text(
+                    "يُكتشف عنوان IP للواي فاي تلقائياً ثم يتصل بالمنفذ 5555، مع محاولة 127.0.0.1 كبديل. وافق على Allow USB debugging على الشاشة ثم أعد المحاولة.",
+                    fontSize = 10.5.sp,
+                    color = TextMuted
+                )
                 if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
                     Text(
                         "الاقتران الذاتي يتطلب Android 11 أو أحدث. على Android 10 يلزم تفعيل adb tcpip من كمبيوتر.",

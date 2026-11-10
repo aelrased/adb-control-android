@@ -46,7 +46,7 @@
 | ADB | [Kadb](https://github.com/flyfishxu/Kadb) (Apache‑2.0) |
 | الاكتشاف | `kadb-mdns` عبر `NsdManager` |
 | الأيقونات | `PackageManager` مباشرة |
-| الحد الأدنى | Android 10 (API 29) |
+| الحد الأدنى | Android 9 (API 28) |
 
 ### كيف يعمل الاقتران الذاتي؟
 
@@ -56,8 +56,22 @@
 4. يتصل التطبيق بمنفذ `_adb-tls-connect._tcp` ويحصل على shell بمستخدم `shell`.
 5. تُنفَّذ أوامر `pm disable-user` / `pm enable` / `pm clear` / `pm uninstall`.
 
+### الاتصال الذاتي بالأجهزة القديمة (Android 9/10)
+
+إذا كان `adbd` مفتوحاً على المنفذ `5555` (بعد `adb tcpip 5555` مرة واحدة من كمبيوتر،
+أو عبر `persist.adb.tcp.port`)، فلا حاجة لأي كمبيوتر بعد ذلك:
+
+1. **Connect over ADB** ← **«استخدام هذا الجهاز (IP الواي فاي تلقائياً)»**.
+2. يكتشف التطبيق عنوان IP للواي فاي تلقائياً ويتصل بـ `<ip>:5555` (ويجرّب `127.0.0.1` كبديل).
+3. تظهر نافذة **Allow USB debugging** على الشاشة ← اختر **Always allow** ثم **OK**.
+4. يعيد التطبيق المحاولة تلقائياً حتى الموافقة ويصبح **ADB متصل** على الجهاز نفسه.
+
+> إصلاح خاص: بعض أجهزة Android 9 (مثل Mi Box) تُرجع مفاتيح RSA بدون معاملات CRT من
+> `KeyFactory`، ما كان يسبب الخطأ `Only RSA private keys with CRT parameters are supported`.
+> يعالج التطبيق ذلك عبر مزوّد `KeyFactory` داخلي يعيد بناء المفتاح مع معاملات CRT.
+
 > على Android 10 لا يوجد اقتران لاسلكي؛ يلزم `adb tcpip 5555` من كمبيوتر مرة واحدة
-> (أو root)، ويمكن دعم ذلك لاحقاً.
+> (أو root). أما Android 11+ فيدعم الاقتران الكامل بدون كمبيوتر.
 
 ### إضافة جهاز آخر
 
@@ -66,6 +80,7 @@
 | الحالة | ما تُدخله |
 |---|---|
 | ADB تقليدي (بعد `adb tcpip 5555` مرة واحدة من كمبيوتر) | IP الجهاز + المنفذ `5555` |
+| نفس الجهاز (ADB ذاتي) | زر **«استخدام هذا الجهاز»** — يكتشف IP تلقائياً |
 | Wireless debugging (Android 11+) | IP + **Pairing port** + **رمز 6 أرقام**، ثم **Connect port** الظاهر في شاشة Wireless debugging |
 
 - يظهر على الجهاز البعيد تنبيه **Allow USB debugging** — اختر **Always allow**.
