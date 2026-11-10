@@ -1,7 +1,6 @@
 # ADB Control Android
 
 تطبيق أندرويد **مفتوح المصدر** لإدارة تطبيقات الجهاز عبر **ADB ذاتي** (بدون كمبيوتر)،
-مستوحى وظيفياً من ADB AppControl مع واجهة أصلية جديدة.
 
 > 🔗 **نسخة لينكس/ويندوز:** https://github.com/aelrased/adb-control-linux
 
