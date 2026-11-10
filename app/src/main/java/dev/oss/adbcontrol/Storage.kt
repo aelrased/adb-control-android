@@ -1,0 +1,94 @@
+package dev.oss.adbcontrol
+
+import android.content.ContentUris
+import android.content.ContentValues
+import android.content.Context
+import android.net.Uri
+import android.os.Environment
+import android.provider.MediaStore
+import java.io.OutputStream
+
+/**
+ * Saves APK/.apks files into the public Downloads folder
+ * (Download/OpenADBControl) so they are reachable from any file manager.
+ */
+object Storage {
+
+    val relativePath: String = Environment.DIRECTORY_DOWNLOADS + "/OpenADBControl"
+    val displayPath: String = "Download/OpenADBControl"
+
+    data class SavedApk(
+        val uri: Uri,
+        val name: String,
+        val size: Long,
+        val modified: Long
+    )
+
+    fun save(
+        context: Context,
+        name: String,
+        mime: String,
+        writer: (OutputStream) -> Unit
+    ): Uri? {
+        val resolver = context.contentResolver
+        val values = ContentValues().apply {
+            put(MediaStore.Downloads.DISPLAY_NAME, name)
+            put(MediaStore.Downloads.MIME_TYPE, mime)
+            put(MediaStore.Downloads.RELATIVE_PATH, relativePath)
+            put(MediaStore.Downloads.IS_PENDING, 1)
+        }
+        val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return null
+        return try {
+            resolver.openOutputStream(uri)?.use { output -> writer(output) }
+                ?: return null
+            val done = ContentValues().apply {
+                put(MediaStore.Downloads.IS_PENDING, 0)
+            }
+            resolver.update(uri, done, null, null)
+            uri
+        } catch (t: Throwable) {
+            runCatching { resolver.delete(uri, null, null) }
+            null
+        }
+    }
+
+    fun list(context: Context): List<SavedApk> {
+        val result = mutableListOf<SavedApk>()
+        val projection = arrayOf(
+            MediaStore.Downloads._ID,
+            MediaStore.Downloads.DISPLAY_NAME,
+            MediaStore.Downloads.SIZE,
+            MediaStore.Downloads.DATE_MODIFIED
+        )
+        val selection =
+            "${MediaStore.Downloads.RELATIVE_PATH} LIKE ? AND ${MediaStore.Downloads.IS_PENDING} = 0"
+        val args = arrayOf("$relativePath%")
+        context.contentResolver.query(
+            MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+            projection,
+            selection,
+            args,
+            "${MediaStore.Downloads.DATE_MODIFIED} DESC"
+        )?.use { cursor ->
+            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Downloads._ID)
+            val nameColumn = cursor.getColumnIndexOrThrow(MediaStore.Downloads.DISPLAY_NAME)
+            val sizeColumn = cursor.getColumnIndexOrThrow(MediaStore.Downloads.SIZE)
+            val dateColumn = cursor.getColumnIndexOrThrow(MediaStore.Downloads.DATE_MODIFIED)
+            while (cursor.moveToNext()) {
+                val id = cursor.getLong(idColumn)
+                val uri = ContentUris.withAppendedId(MediaStore.Downloads.EXTERNAL_CONTENT_URI, id)
+                val readable = runCatching {
+                    context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { }
+                }.getOrNull() != null
+                if (!readable) continue
+                result += SavedApk(
+                    uri = uri,
+                    name = cursor.getString(nameColumn) ?: "file",
+                    size = cursor.getLong(sizeColumn),
+                    modified = cursor.getLong(dateColumn) * 1000L
+                )
+            }
+        }
+        return result
+    }
+}

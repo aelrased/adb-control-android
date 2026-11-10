@@ -1,0 +1,115 @@
+# ADB Control Android
+
+تطبيق أندرويد **مفتوح المصدر** لإدارة تطبيقات الجهاز عبر **ADB ذاتي** (بدون كمبيوتر)،
+مستوحى وظيفياً من ADB AppControl مع واجهة أصلية جديدة.
+
+> **الحالة:** MVP مبني ومُختبر على Android TV 14 (onn 4K). Android 10+ (API 29)،
+> الاقتران الذاتي يتطلب Android 11+.
+
+![Main](docs/screenshot-main.png)
+
+## الميزات
+
+- قائمة التطبيقات مع الأيقونات والأسماء واسم الحزمة والإصدار وحجم APK.
+- تصفية: الكل / مستخدم / نظام / معطّل + بحث فوري.
+- إجراءات لكل تطبيق:
+  - فتح التطبيق، معلومات التطبيق، حذف (واجهة النظام).
+  - **تعطيل/تفعيل** و**مسح البيانات** عبر ADB shell.
+  - **استخراج APK** إلى **Download/OpenADBControl** العام (عبر MediaStore، بدون صلاحيات تخزين)
+    ويجمع الـ splits في ملف `.apks` واحد — يمكن الوصول إليه من أي مدير ملفات.
+- **اقتران ADB لاسلكي** داخل التطبيق عبر mDNS + SPAKE2/TLS.
+- **تعدد الأجهزة**: جهازك + أي عدد من أجهزة الشبكة (IP:5555 أو منفذ Wireless debugging)
+  مع قائمة أجهزة قابلة للتبديل، حذف، وحفظ تلقائي.
+- **تثبيت التطبيقات من البرنامج**: زر `Install APK` في القائمة، أو لمس أي ملف في Library.
+  يدعم `.apk` و`.apks` (تثبيت متعدد الأجزاء)، ويستخدم `pm install -r` / `pm install-multiple`
+  عند الاتصال بجهاز (محلي أو بعيد)، وإلا يفتح مثبّت النظام.
+- **تحديد متعدد وإجراءات جماعية**: اضغط مطوّلاً على أي تطبيق، ثم:
+  - تعطيل/تفعيل/حذف/مسح بيانات لكل المحدد دفعة واحدة (عبر ADB).
+  - **نسخة احتياطية واحدة**: ZIP في `Download/OpenADBControl/backup-<time>.zip`
+    يحتوي `<package>/base.apk` وملفات splits و`backup.json` (الاسم والإصدار).
+  - تحديد الكل من شريط التحديد.
+- **الجسر يعمل بلا واجهة**: Activity شفافة (Translucent) تُغلق نفسها، فلا تظهر شاشة سوداء.
+- **أيقونات وأسماء وأحجام حقيقية للجهاز البعيد**: زر «تحميل الأيقونات» (أو
+  `Sync remote data` من القائمة) يثبّت جسراً صغيراً (13 KB) على الجهاز البعيد عبر ADB،
+  ثم يجلب الأيقونات و`apps.json` (بما فيه `sizeBytes` = مجموع Base + Splits) في أرشيف واحد.
+- مظهر داكن مع تدرّج أخضر/أزرق، Drawer، وشريط سفلي.
+- إعدادات: مراقبة التطبيقات (بيتا)، مجلد APK، منفذ TCP/IP، تحديثات بيتا.
+
+## التقنية
+
+| العنصر | الاختيار |
+|---|---|
+| اللغة/الواجهة | Kotlin 2.0 + Jetpack Compose (Material 3) |
+| ADB | [Kadb](https://github.com/flyfishxu/Kadb) (Apache‑2.0) |
+| الاكتشاف | `kadb-mdns` عبر `NsdManager` |
+| الأيقونات | `PackageManager` مباشرة |
+| الحد الأدنى | Android 10 (API 29) |
+
+### كيف يعمل الاقتران الذاتي؟
+
+1. يفعّل المستخدم **Wireless debugging** ثم **Pair device with pairing code**.
+2. يكتشف التطبيق منفذ الاقتران عبر mDNS (`_adb-tls-pairing._tcp`).
+3. يُدخل المستخدم الرمز (6 أرقام) → SPAKE2 + TLS عبر Kadb → حفظ المفتاح في `filesDir/adbkey.pem`.
+4. يتصل التطبيق بمنفذ `_adb-tls-connect._tcp` ويحصل على shell بمستخدم `shell`.
+5. تُنفَّذ أوامر `pm disable-user` / `pm enable` / `pm clear` / `pm uninstall`.
+
+> على Android 10 لا يوجد اقتران لاسلكي؛ يلزم `adb tcpip 5555` من كمبيوتر مرة واحدة
+> (أو root)، ويمكن دعم ذلك لاحقاً.
+
+### إضافة جهاز آخر
+
+من القائمة الجانبية: **+ Add network device**
+
+| الحالة | ما تُدخله |
+|---|---|
+| ADB تقليدي (بعد `adb tcpip 5555` مرة واحدة من كمبيوتر) | IP الجهاز + المنفذ `5555` |
+| Wireless debugging (Android 11+) | IP + **Pairing port** + **رمز 6 أرقام**، ثم **Connect port** الظاهر في شاشة Wireless debugging |
+
+- يظهر على الجهاز البعيد تنبيه **Allow USB debugging** — اختر **Always allow**.
+- تُحفظ الأجهزة المضافة، وتُعاد محاولة الاتصال عند اختيارها من القائمة.
+- أيقونات/أسماء الأجهزة البعيدة تُجلب عبر زر **«تحميل الأيقونات»** (تثبيت جسر مرة واحدة).
+
+### تبويب User
+
+`User` = التطبيقات الخارجية المثبّتة (`pm list packages -3`)، و`System` = تطبيقات النظام.
+على جهاز onn المذكور: 40 تطبيق مستخدم مقابل 128 نظامياً — وهو السلوك الصحيح.
+
+![Devices](docs/screenshot-devices.png)
+
+## البناء
+
+```bash
+export ANDROID_HOME=$HOME/Android/Sdk
+./gradlew :app:assembleDebug
+# APK: app/build/outputs/apk/debug/app-debug.apk
+```
+
+محلياً استُخدم Gradle 8.13 + AGP 8.7.3 + JDK 17/21.
+
+## البنية
+
+```
+app/src/main/java/dev/oss/adbcontrol/
+├── App.kt              # تهيئة هوية ADB (KadbCert)
+├── AdbManager.kt       # الاكتشاف، الاقتران، الاتصال، تنفيذ shell
+├── AppViewModel.kt     # الحالة + الإجراءات + استخراج APK
+├── AppsRepository.kt   # قراءة التطبيقات والأيقونات من PackageManager
+├── Data.kt             # النماذج
+├── Theme.kt            # ألوان Material3
+└── MainActivity.kt     # كل شاشات Compose
+```
+
+## خريطة الطريق
+
+- [ ] إشعار اقتران مع RemoteInput (إدخال الرمز دون مغادرة شاشة النظام).
+- [ ] مراقبة التثبيت/التحديث في الخلفية (ForegroundService).
+- [ ] اقتران تلقائي بعد إعادة تشغيل Wireless debugging.
+- [ ] دعم Android 10 عبر `adb tcpip`.
+- [ ] Library: تثبيت/مشاركة ملفات `.apk` و`.apks`.
+- [ ] نسخ احتياطي واستعادة، وصلاحيات التطبيقات.
+- [ ] ترجمة عربية كاملة + ثيمات.
+
+## الترخيص
+
+GPL‑3.0‑or‑later. Kadb بترخيص Apache‑2.0. Android علامة تجارية لـ Google؛
+هذا المشروع غير مرتبط بـ Google أو CyberCat.
