@@ -3,6 +3,7 @@ package dev.oss.adbcontrol
 import android.content.Context
 import android.os.Build
 import com.flyfishxu.kadb.Kadb
+import com.flyfishxu.kadb.cert.KadbCert
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -68,6 +69,7 @@ class AdbManager(private val context: Context) {
 
     /** Pair and connect to this device using Wireless Debugging. */
     suspend fun pairSelf(code: String): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching { KadbCert.ensureReady() }
         val endpoint = _state.value.pairingEndpoint
             ?: return@withContext Result.failure(
                 IllegalStateException("لم يتم العثور على منفذ الاقتران. افتح Wireless debugging ← Pair device with pairing code.")
@@ -86,6 +88,7 @@ class AdbManager(private val context: Context) {
     suspend fun connectSelf(): Result<Unit> = withContext(Dispatchers.IO) { connectSelfInternal() }
 
     private suspend fun connectSelfInternal(): Result<Unit> {
+        runCatching { KadbCert.ensureReady() }
         _state.value = _state.value.copy(busy = true, message = "جارٍ الاتصال…")
         var last: Throwable? = null
         repeat(10) {
@@ -130,6 +133,7 @@ class AdbManager(private val context: Context) {
         pairingPort: Int? = null,
         code: String? = null
     ): Result<DeviceInfo> = withContext(Dispatchers.IO) {
+        runCatching { KadbCert.ensureReady() }
         _state.value = _state.value.copy(busy = true, message = "جارٍ الاتصال بـ $host:$port…")
         try {
             if (!code.isNullOrBlank() && pairingPort != null) {

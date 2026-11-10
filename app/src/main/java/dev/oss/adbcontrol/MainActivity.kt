@@ -2,6 +2,8 @@ package dev.oss.adbcontrol
 
 import android.content.Intent
 import android.net.Uri
+import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -38,6 +40,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.CleaningServices
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.DeleteSweep
@@ -118,6 +121,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (Build.VERSION.SDK_INT <= 28 &&
+            checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE), 1)
+        }
         setContent {
             OpenAdbTheme { Root(vm) }
         }
@@ -210,6 +218,7 @@ private fun Root(vm: AppViewModel) {
                         onDisable = { vm.bulkDisable() },
                         onEnable = { vm.bulkEnable() },
                         onBackup = { vm.backupSelected() },
+                        onClearCache = { vm.bulkClearCache() },
                         onUninstall = { pendingBulk = "uninstall" },
                         onClear = { pendingBulk = "clear" }
                     )
@@ -231,6 +240,7 @@ private fun Root(vm: AppViewModel) {
             Box(Modifier.padding(padding).fillMaxSize().background(Bg)) {
                 when (screen) {
                     "settings" -> SettingsScreen(vm)
+                    "clean" -> CleanScreen(vm)
                     "library" -> LibraryScreen(
                         vm = vm,
                         onInstall = { installLauncher.launch(arrayOf("*/*")) }
@@ -495,6 +505,7 @@ private fun SelectionBar(
     onDisable: () -> Unit,
     onEnable: () -> Unit,
     onBackup: () -> Unit,
+    onClearCache: () -> Unit,
     onUninstall: () -> Unit,
     onClear: () -> Unit
 ) {
@@ -525,6 +536,7 @@ private fun SelectionBar(
                 BarAction("تعطيل", Icons.Outlined.Block, onDisable)
                 BarAction("تفعيل", Icons.Outlined.CheckCircle, onEnable)
                 BarAction("نسخة احتياطية", Icons.Outlined.SaveAlt, onBackup)
+                BarAction("مسح الكاش", Icons.Outlined.CleaningServices, onClearCache)
                 BarAction("مسح البيانات", Icons.Outlined.DeleteSweep, onClear)
                 BarAction("حذف", Icons.Outlined.Delete, onUninstall, danger = true)
             }
@@ -697,6 +709,7 @@ private fun ActionsSheet(
                 if (app.enabled) "Disable (ADB)" else "Enable (ADB)",
                 if (app.enabled) Icons.Outlined.Block else Icons.Outlined.CheckCircle
             ) { onAction(if (app.enabled) AppAction.DISABLE else AppAction.ENABLE) }
+            ActionItem("Clear cache (ADB)", Icons.Outlined.CleaningServices) { onAction(AppAction.CLEAR_CACHE) }
             ActionItem("Clear data (ADB)", Icons.Outlined.DeleteSweep) { onAction(AppAction.CLEAR) }
             ActionItem("Extract APK", Icons.Outlined.SaveAlt) { onAction(AppAction.EXTRACT) }
             ActionItem("Uninstall", Icons.Outlined.Delete, danger = true) { onAction(AppAction.UNINSTALL) }
@@ -796,6 +809,108 @@ private fun PairingDialog(
             }
         }
     )
+}
+
+@Composable
+private fun CleanScreen(vm: AppViewModel) {
+    val adb by vm.adbState.collectAsStateWithLifecycle()
+    var profiles by remember { mutableStateOf<List<CytProfile>>(emptyList()) }
+    var selected by remember { mutableStateOf<String?>(null) }
+    var matched by remember { mutableStateOf<String?>(null) }
+    var query by remember { mutableStateOf("") }
+    var count by remember { mutableStateOf(0) }
+
+    LaunchedEffect(Unit) {
+        profiles = vm.cytProfiles()
+        matched = vm.cytMatch()
+        selected = matched ?: profiles.firstOrNull()?.id
+    }
+    LaunchedEffect(selected) {
+        count = selected?.let { vm.cytPackages(it).size } ?: 0
+    }
+
+    val filtered = remember(profiles, query) {
+        val q = query.trim().lowercase()
+        if (q.isEmpty()) profiles else profiles.filter {
+            it.title.lowercase().contains(q) || it.id.contains(q)
+        }
+    }
+    val current = profiles.firstOrNull { it.id == selected }
+
+    Column(Modifier.fillMaxSize().padding(16.dp)) {
+        Text("CleanYourTV", color = TextMain, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+        Text("الجهاز: ${adb.active?.label ?: "غير متصل"}", color = TextMuted, fontSize = 12.sp)
+        if (matched != null) {
+            val name = profiles.firstOrNull { it.id == matched }?.title ?: matched
+            Text("تمت مطابقة ملف: $name", color = AccentGreen, fontSize = 12.sp)
+        }
+        Spacer(Modifier.height(6.dp))
+        OutlinedTextField(
+            value = query,
+            onValueChange = { query = it },
+            label = { Text("ابحث عن موديل التلفزيون") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(6.dp))
+
+        Card(colors = CardDefaults.cardColors(containerColor = CardBg)) {
+            Column(Modifier.padding(12.dp)) {
+                Text(current?.title ?: "اختر ملفاً", color = TextMain, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                Text("$count حزمة قابلة للتعطيل", color = TextMuted, fontSize = 12.sp)
+                Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = { selected?.let { vm.applyDebloat(it, false) } },
+                        enabled = selected != null && adb.connected
+                    ) { Text("تعطيل") }
+                    OutlinedButton(
+                        onClick = { selected?.let { vm.applyDebloat(it, true) } },
+                        enabled = selected != null && adb.connected
+                    ) { Text("استعادة") }
+                }
+                Text(
+                    "تعطيل فقط عبر pm disable-user وليس حذفاً. استخدم «استعادة» للتراجع.",
+                    color = TextMuted,
+                    fontSize = 10.5.sp,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+                if (!adb.connected) {
+                    Text("يتطلب اتصال ADB بالجهاز", color = Danger, fontSize = 11.sp)
+                }
+            }
+        }
+
+        Spacer(Modifier.height(6.dp))
+        LazyColumn(
+            Modifier.fillMaxWidth().weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            items(filtered, key = { it.id }) { profile ->
+                Surface(
+                    color = if (profile.id == selected) Color(0xFF17301F) else CardBg,
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.fillMaxWidth().clickable { selected = profile.id }
+                ) {
+                    Column(Modifier.padding(8.dp)) {
+                        Text(
+                            profile.title,
+                            color = TextMain,
+                            fontSize = 12.5.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            profile.id + if (profile.os.isNotEmpty()) " · ${profile.os}" else "",
+                            color = TextMuted,
+                            fontSize = 10.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -1010,6 +1125,7 @@ private fun DrawerContent(
             }
             DrawerItem(Icons.Outlined.InstallMobile, "Install APK") { onInstallApk() }
             DrawerItem(Icons.Outlined.Sync, "Sync remote data") { onSyncRemote() }
+            DrawerItem(Icons.Outlined.CleaningServices, "CleanYourTV") { onNavigate("clean") }
 
             HorizontalDivider(color = Divider, modifier = Modifier.padding(vertical = 6.dp))
 

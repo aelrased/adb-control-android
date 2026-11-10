@@ -4,8 +4,10 @@ import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
+import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import java.io.File
 import java.io.OutputStream
 
 /**
@@ -30,6 +32,9 @@ object Storage {
         mime: String,
         writer: (OutputStream) -> Unit
     ): Uri? {
+        if (Build.VERSION.SDK_INT < 29) {
+            return saveLegacy(name, writer)
+        }
         val resolver = context.contentResolver
         val values = ContentValues().apply {
             put(MediaStore.Downloads.DISPLAY_NAME, name)
@@ -53,6 +58,9 @@ object Storage {
     }
 
     fun list(context: Context): List<SavedApk> {
+        if (Build.VERSION.SDK_INT < 29) {
+            return listLegacy()
+        }
         val result = mutableListOf<SavedApk>()
         val projection = arrayOf(
             MediaStore.Downloads._ID,
@@ -91,4 +99,38 @@ object Storage {
         }
         return result
     }
+    private fun legacyDir(): File {
+        val downloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        return File(downloads, "OpenADBControl")
+    }
+
+    private fun saveLegacy(name: String, writer: (OutputStream) -> Unit): Uri? {
+        val dir = legacyDir()
+        if (!dir.exists() && !dir.mkdirs()) return null
+        val file = File(dir, name)
+        return try {
+            file.outputStream().use { output -> writer(output) }
+            Uri.fromFile(file)
+        } catch (t: Throwable) {
+            runCatching { file.delete() }
+            null
+        }
+    }
+
+    private fun listLegacy(): List<SavedApk> {
+        val dir = legacyDir()
+        return dir.listFiles()
+            ?.filter { it.isFile }
+            ?.sortedByDescending { it.lastModified() }
+            ?.map { file ->
+                SavedApk(
+                    uri = Uri.fromFile(file),
+                    name = file.name,
+                    size = file.length(),
+                    modified = file.lastModified()
+                )
+            }
+            ?: emptyList()
+    }
+
 }

@@ -17,4 +17,4 @@ enum class AppFilter { ALL, USER, SYSTEM, DISABLED }
 
 enum class AppSort { NAME, DATE, SIZE }
 
-enum class AppAction { OPEN, INFO, DISABLE, ENABLE, CLEAR, EXTRACT, UNINSTALL }
+enum class AppAction { OPEN, INFO, DISABLE, ENABLE, CLEAR, CLEAR_CACHE, EXTRACT, UNINSTALL }

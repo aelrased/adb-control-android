@@ -12,10 +12,15 @@ class App : Application() {
         super.onCreate()
         // Persist the ADB host identity so pairing survives app restarts.
         val keyFile = File(filesDir, "adbkey.pem")
-        KadbCert.configure(
-            store = OkioFilePrivateKeyStore(keyFile.absolutePath.toPath()),
-            policy = KadbCertPolicy(),
-            additionalPrivateKeysPem = emptyList()
-        )
+        // Key generation can take seconds on slow TV boxes; never block the main thread.
+        Thread {
+            runCatching {
+                KadbCert.configure(
+                    store = OkioFilePrivateKeyStore(keyFile.absolutePath.toPath()),
+                    policy = KadbCertPolicy(),
+                    additionalPrivateKeysPem = emptyList()
+                )
+            }
+        }.start()
     }
 }

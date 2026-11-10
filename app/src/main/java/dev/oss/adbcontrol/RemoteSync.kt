@@ -16,7 +16,14 @@ import java.io.FileInputStream
 object RemoteSync {
 
     const val BRIDGE_PKG = "com.adbappcontrol.bridge"
-    private const val REMOTE_FILES = "/sdcard/Android/data/$BRIDGE_PKG/files"
+    private suspend fun remoteFiles(adb: AdbManager): String {
+        val sdk = adb.shell("getprop ro.build.version.sdk")?.trim()?.toIntOrNull() ?: 0
+        return if (sdk < 29) {
+            "/sdcard/Download/ADBControlBridge"
+        } else {
+            "/sdcard/Android/data/$BRIDGE_PKG/files"
+        }
+    }
 
     suspend fun sync(
         context: Context,
@@ -48,29 +55,44 @@ object RemoteSync {
                 return@withContext Result.failure(IllegalStateException(install.trim()))
             }
 
-            progress("قراءة أيقونات الجهاز…")
-            adb.shell("rm -f $REMOTE_FILES/ready")
+            adb.shell("pm grant $BRIDGE_PKG android.permission.WRITE_EXTERNAL_STORAGE")
+            val remote = remoteFiles(adb)
 
+            progress("قراءة أيقونات الجهاز…")
+            adb.shell("rm -f $remote/ready")
+            adb.shell("am force-stop $BRIDGE_PKG")
+
+            // Preferred: headless ContentProvider trigger (no Activity, no black screen).
+            val trigger = adb.shell(
+                "content call --uri content://com.adbappcontrol.bridge.export --method export"
+            )
             var ready = false
-            var attempt = 0
-            while (!ready && attempt < 3) {
-                adb.shell("am force-stop $BRIDGE_PKG")
-                adb.shell("am start -n $BRIDGE_PKG/.MainActivity")
-                repeat(20) {
+            if (trigger != null && !trigger.contains("Error")) {
+                repeat(150) {
                     if (!ready) {
-                        val out = adb.shell("cat $REMOTE_FILES/ready")
+                        val out = adb.shell("cat $remote/ready")
                         if (out?.contains("\"apps\"") == true) ready = true else delay(700)
                     }
                 }
-                attempt++
-                if (!ready) delay(1500)
             }
+
+            // Fallback for devices that block `content call`.
+            if (!ready) {
+                adb.shell("am start -n $BRIDGE_PKG/.MainActivity")
+                repeat(60) {
+                    if (!ready) {
+                        val out = adb.shell("cat $remote/ready")
+                        if (out?.contains("\"apps\"") == true) ready = true else delay(700)
+                    }
+                }
+            }
+
             if (!ready) {
                 return@withContext Result.failure(IllegalStateException("انتهت المهلة قبل تجهيز الأيقونات"))
             }
 
             progress("سحب الأيقونات…")
-            adb.shell("cd $REMOTE_FILES && tar -cf /data/local/tmp/adbcontrol-icons.tar icons apps.json")
+            adb.shell("cd $remote && tar -cf /data/local/tmp/adbcontrol-icons.tar icons apps.json")
             val tar = File(dir, "icons.tar")
             if (!adb.pull("/data/local/tmp/adbcontrol-icons.tar", tar)) {
                 return@withContext Result.failure(IllegalStateException("فشل سحب الأرشيف"))

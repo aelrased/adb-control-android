@@ -21,6 +21,7 @@ import java.util.zip.ZipOutputStream
 class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repo = AppsRepository(application)
+    private val cyt = CytRepository(application)
     private val adb = AdbManager(application)
     private val prefs = application.getSharedPreferences("settings", Context.MODE_PRIVATE)
 
@@ -110,6 +111,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun bulkDisable() = bulkShell("disable")
     fun bulkEnable() = bulkShell("enable")
     fun bulkClear() = bulkShell("clear")
+    fun bulkClearCache() = bulkShell("clear_cache")
     fun bulkUninstall() = bulkShell("uninstall")
 
     private fun bulkShell(kind: String) {
@@ -120,12 +122,33 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 emit("هذا الإجراء يحتاج اتصال ADB")
                 return@launch
             }
+            if (kind == "clear_cache") {
+                val sdk = adb.shell("getprop ro.build.version.sdk")?.trim()?.toIntOrNull() ?: 0
+                if (sdk < 30) {
+                    val out = adb.shell("pm trim-caches 999999999999")
+                    emit(
+                        if (out != null) "تم تنظيف كاش جميع التطبيقات (Android ${sdk} لا يدعم لكل تطبيق)"
+                        else "فشل التنظيف"
+                    )
+                } else {
+                    var cleared = 0
+                    packages.forEach { pkg ->
+                        val out = adb.shell("pm clear --cache-only --user 0 $pkg")
+                        if (out != null && !out.contains("Failed") && !out.contains("Failure")) cleared++
+                    }
+                    emit("تم مسح كاش $cleared/${packages.size}")
+                }
+                clearSelection()
+                reloadApps()
+                return@launch
+            }
             var done = 0
             for (pkg in packages) {
                 val command = when (kind) {
                     "disable" -> "pm disable-user --user 0 $pkg"
                     "enable" -> "pm enable $pkg"
                     "clear" -> "pm clear --user 0 $pkg"
+                    "clear_cache" -> "pm clear --cache-only --user 0 $pkg"
                     "uninstall" -> "pm uninstall --user 0 $pkg"
                     else -> continue
                 }
@@ -215,6 +238,38 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         return uri
     }
 
+    suspend fun cytProfiles(): List<CytProfile> = cyt.profiles()
+
+    suspend fun cytPackages(profile: String): List<String> = cyt.packages(profile)
+
+    suspend fun cytMatch(): String? = cyt.match(adb)
+
+    fun applyDebloat(profile: String, enable: Boolean) {
+        viewModelScope.launch {
+            if (!adb.state.value.connected) {
+                emit("يتطلب اتصال ADB بالجهاز")
+                return@launch
+            }
+            val packages = cyt.packages(profile)
+            if (packages.isEmpty()) {
+                emit("قائمة CleanYourTV فارغة أو غير موجودة")
+                return@launch
+            }
+            var done = 0
+            for (pkg in packages) {
+                val command = if (enable) {
+                    "pm enable $pkg"
+                } else {
+                    "pm disable-user --user 0 $pkg"
+                }
+                val out = adb.shell(command)
+                if (out != null && !out.contains("Failure") && !out.contains("Exception")) done++
+            }
+            emit("تم ${if (enable) "استعادة" else "تعطيل"} $done/${packages.size} حزمة")
+            reloadApps()
+        }
+    }
+
     fun installApk(uri: Uri) {
         viewModelScope.launch {
             try {
@@ -271,51 +326,70 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
         val dir = File(context.cacheDir, "install").apply { mkdirs() }
         val file = File(dir, name.replace(Regex("[^A-Za-z0-9._-]"), "_"))
-        context.contentResolver.openInputStream(uri)?.use { input ->
-            file.outputStream().use { input.copyTo(it) }
+        val input = if (uri.scheme == "file") {
+            File(uri.path ?: "").inputStream()
+        } else {
+            context.contentResolver.openInputStream(uri)
+        }
+        input?.use { stream ->
+            file.outputStream().use { stream.copyTo(it) }
         } ?: throw IllegalStateException("تعذّر قراءة الملف")
         return file
     }
 
     private suspend fun installViaAdb(file: File): String {
-        val apks = if (file.name.lowercase().endsWith(".apk")) {
-            listOf(file)
+        val groups: List<Pair<String, List<File>>> = if (file.name.lowercase().endsWith(".apk")) {
+            listOf("app" to listOf(file))
         } else {
-            extractApks(file)
+            extractArchive(file)
         }
-        if (apks.isEmpty()) return "لم يتم العثور على ملفات APK داخل الحزمة"
+        if (groups.isEmpty()) return "لم يتم العثور على ملفات APK داخل الحزمة"
 
-        val remotePaths = mutableListOf<String>()
-        apks.forEachIndexed { index, apk ->
-            val remote = "/data/local/tmp/adbcontrol-install-$index.apk"
-            if (!adb.push(apk, remote)) return "فشل رفع ${apk.name}"
-            remotePaths += remote
+        var ok = 0
+        val failures = mutableListOf<String>()
+        groups.forEachIndexed { groupIndex, group ->
+            val (groupName, apks) = group
+            val remote = mutableListOf<String>()
+            var pushFailed = false
+            apks.forEachIndexed { index, apk ->
+                val dst = "/data/local/tmp/adbcontrol-install-$groupIndex-$index.apk"
+                if (!adb.push(apk, dst)) pushFailed = true else remote += dst
+            }
+            if (pushFailed || remote.isEmpty()) {
+                failures += "$groupName: فشل رفع الملف"
+                return@forEachIndexed
+            }
+            val command = if (remote.size == 1) {
+                "pm install -r ${remote.first()}"
+            } else {
+                "pm install-multiple -r ${remote.joinToString(" ")}"
+            }
+            val output = adb.shell(command) ?: ""
+            if (output.contains("Success")) ok++ else failures += "$groupName: ${output.trim().take(160)}"
+            adb.shell("rm -f ${remote.joinToString(" ")}")
         }
-        val command = if (remotePaths.size == 1) {
-            "pm install -r ${remotePaths.first()}"
-        } else {
-            "pm install-multiple -r ${remotePaths.joinToString(" ")}"
+        return buildString {
+            append("تم تثبيت $ok/${groups.size}")
+            if (failures.isNotEmpty()) append("\n").append(failures.first())
         }
-        val output = adb.shell(command) ?: return "لا يوجد اتصال ADB"
-        adb.shell("rm -f ${remotePaths.joinToString(" ")}")
-        return output.trim().ifEmpty { "تم إرسال أمر التثبيت" }
     }
 
-    private fun extractApks(archive: File): List<File> {
-        val dir = File(archive.parentFile, "split-${System.currentTimeMillis()}").apply { mkdirs() }
-        val files = mutableListOf<File>()
+    private fun extractArchive(archive: File): List<Pair<String, List<File>>> {
+        val root = File(archive.parentFile, "extract-${System.currentTimeMillis()}").apply { mkdirs() }
+        val groups = LinkedHashMap<String, MutableList<File>>()
         java.util.zip.ZipInputStream(archive.inputStream().buffered()).use { zip ->
             var entry = zip.nextEntry
             while (entry != null) {
                 if (!entry.isDirectory && entry.name.lowercase().endsWith(".apk")) {
-                    val out = File(dir, File(entry.name).name)
+                    val folder = if (entry.name.contains('/')) entry.name.substringBefore('/') else "app"
+                    val out = File(root, folder + "_" + File(entry.name).name)
                     out.outputStream().use { zip.copyTo(it) }
-                    files += out
+                    groups.getOrPut(folder) { mutableListOf() }.add(out)
                 }
                 entry = zip.nextEntry
             }
         }
-        return files
+        return groups.map { it.key to it.value.toList() }
     }
 
     private fun launchLocalInstaller(file: File) {
@@ -439,9 +513,31 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     "تم مسح بيانات ${app.label}"
                 )
 
+                AppAction.CLEAR_CACHE -> clearCache(app.packageName, app.label)
+
                 AppAction.EXTRACT -> extract(app)
             }
         }
+    }
+
+    private suspend fun clearCache(pkg: String, label: String) {
+        val command = "sdk=$(getprop ro.build.version.sdk); " +
+            "if [ \"\$sdk\" -ge 30 ]; then pm clear --cache-only --user 0 $pkg; " +
+            "else pm trim-caches 999999999999; echo TRIM_ALL; fi"
+        val output = adb.shell(command)
+        if (output == null) {
+            emit("هذا الإجراء يحتاج اتصال ADB")
+            return
+        }
+        if (output.contains("TRIM_ALL")) {
+            emit("تم تنظيف كاش جميع التطبيقات (مسح كاش تطبيق واحد متاح من Android 11+)")
+        } else if (output.contains("Failed") || output.contains("Failure") || output.contains("Exception")) {
+            emit("فشل مسح الكاش: ${output.trim()}")
+        } else {
+            emit("تم مسح كاش $label")
+        }
+        delay(300)
+        reloadApps()
     }
 
     private suspend fun shellAction(command: String, success: String) {
@@ -452,7 +548,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
         val text = output.trim()
         emit(
-            if (text.contains("Exception") || text.contains("Failure") || text.contains("Error")) text
+            if (text.contains("Exception") || text.contains("Failure") || text.contains("Failed") || text.contains("Error")) text
             else success
         )
         delay(350)
