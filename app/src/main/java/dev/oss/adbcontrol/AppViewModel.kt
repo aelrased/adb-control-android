@@ -547,7 +547,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     // ---------- device management ----------
 
-    fun startSelfPairing() = adb.startDiscovery()
+    fun startSelfPairing() = adb.restartDiscovery()
 
     fun pairSelf(code: String) {
         viewModelScope.launch {

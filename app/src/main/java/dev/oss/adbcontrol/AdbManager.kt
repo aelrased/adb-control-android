@@ -62,6 +62,13 @@ class AdbManager(private val context: Context) {
         discovery.start()
     }
 
+    /** Restart mDNS discovery so a newly opened pairing screen is picked up. */
+    fun restartDiscovery() {
+        stopDiscovery()
+        _state.value = _state.value.copy(pairingEndpoint = null, connectEndpoint = null)
+        startDiscovery()
+    }
+
     fun stopDiscovery() {
         mdns?.stop()
         mdns = null
@@ -199,10 +206,18 @@ class AdbManager(private val context: Context) {
         _state.value = _state.value.copy(busy = true, message = "جارٍ الاقتران بـ $host:$pairingPort…")
         try {
             Kadb.pair(host, pairingPort, code.trim())
+            // The connect port is announced over mDNS a moment after pairing.
+            var discovered = _state.value.connectEndpoint
+            var waited = 0
+            while (discovered == null && waited < 16) {
+                delay(500)
+                discovered = _state.value.connectEndpoint
+                waited++
+            }
             val targetHost = connectHost?.takeIf { it.isNotBlank() }
-                ?: _state.value.connectEndpoint?.host
+                ?: discovered?.host
                 ?: host
-            val targetPort = connectPort ?: _state.value.connectEndpoint?.port
+            val targetPort = connectPort ?: discovered?.port
             if (targetPort == null) {
                 _state.value = _state.value.copy(
                     busy = false,

@@ -3,6 +3,7 @@ package dev.oss.adbcontrol
 import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
+import android.os.Build
 import java.net.Inet4Address
 
 /**
@@ -31,22 +32,8 @@ class AdbDiscovery(
             override fun onDiscoveryStarted(serviceType: String) = Unit
 
             override fun onServiceFound(info: NsdServiceInfo) {
-                if (info.serviceType != type) return
-                runCatching {
-                    nsd.resolveService(info, object : NsdManager.ResolveListener {
-                        override fun onResolveFailed(serviceInfo: NsdServiceInfo, errorCode: Int) = Unit
-
-                        override fun onServiceResolved(serviceInfo: NsdServiceInfo) {
-                            val addresses = serviceInfo.hostAddresses
-                            val address = addresses.firstOrNull { it is Inet4Address } ?: addresses.firstOrNull()
-                            val host = address?.hostAddress ?: return
-                            val endpoint = Endpoint(host, serviceInfo.port)
-                            if (pairing) this@AdbDiscovery.pairing = endpoint
-                            else this@AdbDiscovery.connect = endpoint
-                            onEndpoints(this@AdbDiscovery.pairing, this@AdbDiscovery.connect)
-                        }
-                    })
-                }
+                if (!info.serviceType.startsWith(type)) return
+                resolve(info, type, pairing, attempts = 0)
             }
 
             override fun onServiceLost(info: NsdServiceInfo) = Unit
@@ -56,6 +43,35 @@ class AdbDiscovery(
         }
         listeners += listener
         runCatching { nsd.discoverServices(type, NsdManager.PROTOCOL_DNS_SD, listener) }
+    }
+
+    private fun resolve(info: NsdServiceInfo, type: String, pairing: Boolean, attempts: Int) {
+        runCatching {
+            nsd.resolveService(info, object : NsdManager.ResolveListener {
+                override fun onResolveFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
+                    if (attempts < 3) {
+                        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                            resolve(serviceInfo, type, pairing, attempts + 1)
+                        }, 1200)
+                    }
+                }
+
+                override fun onServiceResolved(serviceInfo: NsdServiceInfo) {
+                    val host = if (Build.VERSION.SDK_INT >= 34) {
+                        val addresses = serviceInfo.hostAddresses
+                        (addresses.firstOrNull { it is Inet4Address } ?: addresses.firstOrNull())
+                            ?.hostAddress
+                    } else {
+                        @Suppress("DEPRECATION")
+                        serviceInfo.host?.hostAddress
+                    } ?: return
+                    val endpoint = Endpoint(host, serviceInfo.port)
+                    if (pairing) this@AdbDiscovery.pairing = endpoint
+                    else this@AdbDiscovery.connect = endpoint
+                    onEndpoints(this@AdbDiscovery.pairing, this@AdbDiscovery.connect)
+                }
+            })
+        }
     }
 
     fun stop() {

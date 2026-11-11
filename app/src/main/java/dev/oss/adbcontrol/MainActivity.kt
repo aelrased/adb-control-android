@@ -275,6 +275,7 @@ private fun Root(vm: AppViewModel) {
             onPairManual = { host, pairingPort, connectHost, connectPort, code ->
                 vm.pairRemote(host, pairingPort, connectHost, connectPort, code)
             },
+            onConnectManual = { host, port -> vm.addDevice(host, port, null, null) },
             onConnect = { vm.connectSelf() },
             onLocal = {
                 vm.connectLocal()
@@ -759,6 +760,7 @@ private fun PairingDialog(
     onStart: () -> Unit,
     onPair: (String) -> Unit,
     onPairManual: (String, Int, String?, Int?, String) -> Unit,
+    onConnectManual: (String, Int) -> Unit,
     onConnect: () -> Unit,
     onLocal: () -> Unit,
     onClose: () -> Unit
@@ -894,10 +896,21 @@ private fun PairingDialog(
                         modifier = Modifier.fillMaxWidth()
                     ) { Text("Pair") }
                     OutlinedButton(
-                        onClick = onConnect,
-                        enabled = !adb.busy,
+                        onClick = {
+                            if (manualHost.isNotBlank() && manualConnect != null) {
+                                onConnectManual(manualHost, manualConnect)
+                            } else {
+                                onConnect()
+                            }
+                        },
+                        enabled = !adb.busy && (manualConnect != null || adb.connectEndpoint != null),
                         modifier = Modifier.fillMaxWidth().padding(top = 6.dp)
-                    ) { Text("Connect") }
+                    ) {
+                        Text(
+                            if (manualConnect != null) "Connect إلى $manualHost:$manualConnect"
+                            else "Connect"
+                        )
+                    }
                     TextButton(
                         onClick = onStart,
                         modifier = Modifier.fillMaxWidth()
