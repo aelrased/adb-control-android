@@ -183,7 +183,6 @@ private fun Root(vm: AppViewModel) {
                 },
                 onRemoveDevice = { id -> vm.removeDevice(id) },
                 onAddDevice = { showAddDevice = true },
-                onInstallApk = { installLauncher.launch(arrayOf("*/*")) },
                 onSyncRemote = { vm.syncRemoteIcons() }
             )
         }
@@ -1101,9 +1100,20 @@ private fun LibraryScreen(vm: AppViewModel, onInstall: () -> Unit) {
                 color = TextMuted,
                 fontSize = 11.sp
             )
-            Button(onClick = onInstall, modifier = Modifier.padding(top = 10.dp)) {
-                Text("+ Install APK / .apks")
+            Button(
+                onClick = onInstall,
+                modifier = Modifier.fillMaxWidth().padding(top = 10.dp)
+            ) {
+                Icon(Icons.Outlined.InstallMobile, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("تثبيت APK / .apks لهذا الجهاز")
             }
+            Text(
+                "هذا هو المكان الوحيد للتثبيت: اختر ملفاً من الهاتف، أو اضغط أي ملف في المكتبة لتثبيته.",
+                color = TextMuted,
+                fontSize = 11.sp,
+                modifier = Modifier.padding(top = 6.dp, bottom = 4.dp)
+            )
         }
         if (files.isEmpty()) {
             item {
@@ -1152,7 +1162,6 @@ private fun DrawerContent(
     onSelectDevice: (String) -> Unit,
     onRemoveDevice: (String) -> Unit,
     onAddDevice: () -> Unit,
-    onInstallApk: () -> Unit,
     onSyncRemote: () -> Unit
 ) {
     val context = LocalContext.current
@@ -1193,7 +1202,6 @@ private fun DrawerContent(
                         .putExtra(Intent.EXTRA_SUBJECT, "ADB Control Android feedback")
                 )
             }
-            DrawerItem(Icons.Outlined.InstallMobile, "Install APK") { onInstallApk() }
             DrawerItem(Icons.Outlined.Sync, "Sync remote data") { onSyncRemote() }
             DrawerItem(Icons.Outlined.CleaningServices, "CleanYourTV") { onNavigate("clean") }
             DrawerItem(Icons.Outlined.Add, "Add network device") { onAddDevice() }
