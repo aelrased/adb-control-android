@@ -557,6 +557,23 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun pairRemote(
+        host: String,
+        pairingPort: Int,
+        connectHost: String?,
+        connectPort: Int?,
+        code: String
+    ) {
+        viewModelScope.launch {
+            adb.pairRemote(host, pairingPort, connectHost, connectPort, code)
+                .onSuccess {
+                    emit("تم الاقتران")
+                    refresh()
+                }
+                .onFailure { emit(it.message ?: "فشل الاقتران") }
+        }
+    }
+
     fun connectSelf() {
         viewModelScope.launch {
             adb.connectSelf()

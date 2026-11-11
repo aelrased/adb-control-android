@@ -56,6 +56,20 @@
 4. يتصل التطبيق بمنفذ `_adb-tls-connect._tcp` ويحصل على shell بمستخدم `shell`.
 5. تُنفَّذ أوامر `pm disable-user` / `pm enable` / `pm clear` / `pm uninstall`.
 
+### إدخال بيانات الاقتران يدوياً
+
+إذا لم يجد البحث التلقائي (mDNS) منفذ الاقتران:
+
+1. من شاشة **Wireless debugging** اضغط **Pair device with pairing code**.
+2. في التطبيق: **Connect over ADB** ← قسم **«إدخال يدوي»**:
+   - `IP / host:pairing-port` (مثال `10.0.0.138:42765`)
+   - `Pair port`
+   - `Connect port` (من الشاشة الرئيسية أسفل مفتاح On، وليس منفذ الاقتران)
+   - الرمز المكوّن من 6 أرقام
+3. اضغط **Pair** — يقوم التطبيق بالاقتران ثم الاتصال مباشرة.
+
+أو من **+ Add network device**: الحقول كلها ظاهرة (IP / Connect port / Pairing port / Code) والنافذة قابلة للتمرير.
+
 ### الاتصال الذاتي بالأجهزة القديمة (Android 9/10)
 
 إذا كان `adbd` مفتوحاً على المنفذ `5555` (بعد `adb tcpip 5555` مرة واحدة من كمبيوتر،

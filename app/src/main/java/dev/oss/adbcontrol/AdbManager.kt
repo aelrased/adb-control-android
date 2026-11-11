@@ -80,7 +80,7 @@ class AdbManager(private val context: Context) {
             _state.value = _state.value.copy(message = "تم الاقتران، جارٍ الاتصال…")
             connectSelfInternal()
         } catch (t: Throwable) {
-            _state.value = _state.value.copy(busy = false, message = "فشل الاقتران: ${t.message}")
+            _state.value = _state.value.copy(busy = false, message = "فشل الاقتران: ${friendlyError(t)}")
             Result.failure(t)
         }
     }
@@ -118,7 +118,7 @@ class AdbManager(private val context: Context) {
         _state.value = _state.value.copy(
             busy = false,
             connected = false,
-            message = "تعذّر الاتصال: ${last?.message ?: "لم يتم العثور على منفذ الاتصال"}"
+            message = "تعذّر الاتصال: ${last?.let { friendlyError(it) } ?: "لم يتم العثور على منفذ الاتصال"}"
         )
         return Result.failure(last ?: IllegalStateException("no connect endpoint"))
     }
@@ -164,8 +164,56 @@ class AdbManager(private val context: Context) {
             }
             _state.value = _state.value.copy(
                 busy = false,
-                message = "تعذّر الاتصال: ${t.message}$hint"
+                message = "تعذّر الاتصال: ${friendlyError(t)}$hint"
             )
+            Result.failure(t)
+        }
+    }
+
+    private fun friendlyError(t: Throwable): String {
+        val m = t.message.orEmpty()
+        val lower = m.lowercase()
+        return when {
+            lower.contains("certificate_unknown") || lower.contains("certificate unknown") ->
+                "الجهاز غير مقترن بهذا التطبيق — استخدم Pair مع منفذ الاقتران والرمز أولاً (أو وافق على Allow USB debugging)"
+            lower.contains("sslv3_alert") || lower.contains("tls") && lower.contains("alert") ->
+                "فشل تحقق TLS — اقترن بالجهاز أولاً من نافذة Wireless debugging"
+            lower.contains("connection refused") ->
+                "المنفذ مغلق — تحقق من الرقم أو أعد تشغيل Wireless debugging"
+            lower.contains("unauthorized") ->
+                "لم تتم الموافقة — اختر Always allow على شاشة الجهاز"
+            m.isBlank() -> "تعذّر الاتصال"
+            else -> m.take(300)
+        }
+    }
+
+    /** Pair manually (no mDNS): enter pairing host/port + connect port from the phone screen. */
+    suspend fun pairRemote(
+        host: String,
+        pairingPort: Int,
+        connectHost: String?,
+        connectPort: Int?,
+        code: String
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching { KadbCert.ensureReady() }
+        _state.value = _state.value.copy(busy = true, message = "جارٍ الاقتران بـ $host:$pairingPort…")
+        try {
+            Kadb.pair(host, pairingPort, code.trim())
+            val targetHost = connectHost?.takeIf { it.isNotBlank() }
+                ?: _state.value.connectEndpoint?.host
+                ?: host
+            val targetPort = connectPort ?: _state.value.connectEndpoint?.port
+            if (targetPort == null) {
+                _state.value = _state.value.copy(
+                    busy = false,
+                    message = "تم الاقتران. أدخل منفذ Connect من شاشة Wireless debugging ثم اضغط Connect."
+                )
+                return@withContext Result.success(Unit)
+            }
+            _state.value = _state.value.copy(message = "تم الاقتران، جارٍ الاتصال بـ $targetHost:$targetPort…")
+            addDevice(targetHost, targetPort, null, null).map { }
+        } catch (t: Throwable) {
+            _state.value = _state.value.copy(busy = false, message = "فشل الاقتران: ${friendlyError(t)}")
             Result.failure(t)
         }
     }

@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -271,6 +272,9 @@ private fun Root(vm: AppViewModel) {
             adb = adb,
             onStart = { vm.startSelfPairing() },
             onPair = { vm.pairSelf(it) },
+            onPairManual = { host, pairingPort, connectHost, connectPort, code ->
+                vm.pairRemote(host, pairingPort, connectHost, connectPort, code)
+            },
             onConnect = { vm.connectSelf() },
             onLocal = {
                 vm.connectLocal()
@@ -754,12 +758,31 @@ private fun PairingDialog(
     adb: AdbUiState,
     onStart: () -> Unit,
     onPair: (String) -> Unit,
+    onPairManual: (String, Int, String?, Int?, String) -> Unit,
     onConnect: () -> Unit,
     onLocal: () -> Unit,
     onClose: () -> Unit
 ) {
     var code by remember { mutableStateOf("") }
+    var pairHost by remember { mutableStateOf("") }
+    var pairPort by remember { mutableStateOf("") }
+    var connectPort by remember { mutableStateOf("") }
     LaunchedEffect(Unit) { onStart() }
+    LaunchedEffect(adb.pairingEndpoint, adb.connectEndpoint) {
+        adb.pairingEndpoint?.let {
+            if (pairHost.isBlank()) pairHost = it.host
+            if (pairPort.isBlank()) pairPort = it.port.toString()
+        }
+        adb.connectEndpoint?.let {
+            if (pairHost.isBlank()) pairHost = it.host
+            if (connectPort.isBlank()) connectPort = it.port.toString()
+        }
+    }
+
+    val manualHost = pairHost.substringBefore(":").trim()
+    val manualPairPort = pairHost.substringAfter(":", "").toIntOrNull() ?: pairPort.toIntOrNull()
+    val manualConnect = connectPort.toIntOrNull()
+    val manualReady = manualHost.isNotBlank() && manualPairPort != null
 
     Dialog(
         onDismissRequest = onClose,
@@ -791,23 +814,58 @@ private fun PairingDialog(
                         .verticalScroll(rememberScrollState())
                 ) {
                     Text(
-                        "Pairing: " + (adb.pairingEndpoint?.let { "${it.host}:${it.port}" } ?: "جارٍ البحث…"),
+                        "منفذ الاقتران (Pairing): " + (adb.pairingEndpoint?.let { "${it.host}:${it.port}" } ?: "لم يُعثر عليه — أدخله يدوياً"),
                         fontSize = 12.sp,
-                        color = if (adb.pairingEndpoint != null) AccentGreen else TextMuted
+                        color = if (adb.pairingEndpoint != null) AccentGreen else Color(0xFFFFCF70)
                     )
                     Text(
-                        "Connect: " + (adb.connectEndpoint?.let { "${it.host}:${it.port}" } ?: "غير متاح"),
+                        "منفذ الاتصال (Connect): " + (adb.connectEndpoint?.let { "${it.host}:${it.port}" } ?: "غير متاح"),
                         fontSize = 12.sp,
                         color = TextMuted
                     )
-                    Spacer(Modifier.height(8.dp))
+
+                    HorizontalDivider(color = Divider, modifier = Modifier.padding(vertical = 8.dp))
+                    Text("إدخال يدوي", color = TextMain, fontWeight = FontWeight.SemiBold, fontSize = 12.5.sp)
+                    Text(
+                        "انسخ الأرقام من شاشة Wireless debugging: منفذ الاقتران من نافذة «Pair with device»، " +
+                            "ومنفذ Connect من الشاشة الرئيسية تحت مفتاح On.",
+                        fontSize = 10.5.sp,
+                        color = TextMuted,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                    Row(Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                        OutlinedTextField(
+                            value = pairHost,
+                            onValueChange = { pairHost = it.trim() },
+                            label = { Text("IP / host:pairing-port") },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        OutlinedTextField(
+                            value = pairPort,
+                            onValueChange = { pairPort = it.filter(Char::isDigit).take(5) },
+                            label = { Text("Pair port") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.width(110.dp)
+                        )
+                    }
+                    OutlinedTextField(
+                        value = connectPort,
+                        onValueChange = { connectPort = it.filter(Char::isDigit).take(5) },
+                        label = { Text("Connect port (بعد الاقتران)") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                    )
                     OutlinedTextField(
                         value = code,
                         onValueChange = { code = it.filter(Char::isDigit).take(6) },
                         label = { Text("6-digit pairing code") },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
                     )
                     if (adb.message.isNotEmpty()) {
                         Text(
@@ -819,8 +877,20 @@ private fun PairingDialog(
                     }
                     Spacer(Modifier.height(8.dp))
                     Button(
-                        onClick = { onPair(code) },
-                        enabled = !adb.busy && code.length == 6 && adb.pairingEndpoint != null,
+                        onClick = {
+                            if (manualReady) {
+                                onPairManual(
+                                    manualHost,
+                                    manualPairPort!!,
+                                    manualHost,
+                                    manualConnect,
+                                    code
+                                )
+                            } else {
+                                onPair(code)
+                            }
+                        },
+                        enabled = !adb.busy && code.length == 6 && (manualReady || adb.pairingEndpoint != null),
                         modifier = Modifier.fillMaxWidth()
                     ) { Text("Pair") }
                     OutlinedButton(
@@ -843,18 +913,6 @@ private fun PairingDialog(
                             "وافق على Allow USB debugging على الشاشة ثم أعد المحاولة.",
                         fontSize = 11.sp,
                         color = TextMuted
-                    )
-
-                    Spacer(Modifier.height(10.dp))
-                    Text("خطوات الاقتران اللاسلكي", color = TextMain, fontWeight = FontWeight.SemiBold, fontSize = 12.5.sp)
-                    Text(
-                        "1) فعّل Developer options ثم Wireless debugging.\n" +
-                            "2) اضغط «Pair device with pairing code».\n" +
-                            "3) استخدم Split screen (أو اسحب من الأسفل) وأدخل الرمز هنا.\n" +
-                            "4) بعد نجاح الاقتران اضغط Connect.",
-                        fontSize = 11.5.sp,
-                        color = TextMuted,
-                        modifier = Modifier.padding(top = 4.dp)
                     )
                     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
                         Text(
@@ -1329,68 +1387,101 @@ private fun AddDeviceDialog(
     var pairingPort by remember { mutableStateOf("") }
     var code by remember { mutableStateOf("") }
 
-    AlertDialog(
+    val targetHost = host.substringBefore(":").trim()
+    val typedPort = host.substringAfter(":", "").toIntOrNull()
+    val connectPort = typedPort ?: port.toIntOrNull()
+
+    Dialog(
         onDismissRequest = onClose,
-        title = { Text("Add network device") },
-        text = {
-            Column {
-                Text(
-                    "أدخل IP الجهاز. للأندرويد 11+ عبر Wireless debugging أدخل أيضاً منفذ الاقتران والرمز.",
-                    fontSize = 12.sp
-                )
-                Spacer(Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = host,
-                    onValueChange = { host = it },
-                    label = { Text("IP / host") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = port,
-                    onValueChange = { port = it.filter(Char::isDigit).take(5) },
-                    label = { Text("Connect port") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = pairingPort,
-                    onValueChange = { pairingPort = it.filter(Char::isDigit).take(5) },
-                    label = { Text("Pairing port (optional)") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = code,
-                    onValueChange = { code = it.filter(Char::isDigit).take(6) },
-                    label = { Text("Pairing code (optional)") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Text(
-                    "USB: ثبّت adb ثم adb tcpip 5555. اللاسلكي الحديث: Wireless debugging ← Pair with code.",
-                    fontSize = 10.5.sp,
-                    color = TextMuted,
-                    modifier = Modifier.padding(top = 6.dp)
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    val p = port.toIntOrNull()
-                    if (host.isNotBlank() && p != null) {
-                        onAdd(host.trim(), p, pairingPort.toIntOrNull(), code.ifBlank { null })
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            color = Color(0xFF12161D),
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier.fillMaxWidth(0.96f)
+        ) {
+            Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "Add network device",
+                        color = TextMain,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(onClick = onClose) {
+                        Icon(Icons.Outlined.Close, contentDescription = "Close", tint = TextMuted)
                     }
-                },
-                enabled = host.isNotBlank() && port.toIntOrNull() != null
-            ) { Text("Add") }
-        },
-        dismissButton = { TextButton(onClick = onClose) { Text("Cancel") } }
-    )
+                }
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 460.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    Text(
+                        "أدخل IP الجهاز. للأندرويد 11+ عبر Wireless debugging أدخل أيضاً منفذ الاقتران والرمز 6 أرقام.",
+                        fontSize = 12.sp,
+                        color = TextMuted
+                    )
+                    OutlinedTextField(
+                        value = host,
+                        onValueChange = { host = it.trim() },
+                        label = { Text("IP / host:port") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                    )
+                    OutlinedTextField(
+                        value = port,
+                        onValueChange = { port = it.filter(Char::isDigit).take(5) },
+                        label = { Text("Connect port") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                    )
+                    OutlinedTextField(
+                        value = pairingPort,
+                        onValueChange = { pairingPort = it.filter(Char::isDigit).take(5) },
+                        label = { Text("Pairing port (من نافذة Pair with device)") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                    )
+                    OutlinedTextField(
+                        value = code,
+                        onValueChange = { code = it.filter(Char::isDigit).take(6) },
+                        label = { Text("Pairing code (6 أرقام)") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                    )
+                    Text(
+                        "USB: adb tcpip 5555. اللاسلكي: Wireless debugging ← Pair with device ← انسخ IP:port والرمز.",
+                        fontSize = 10.5.sp,
+                        color = TextMuted,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+                Row(
+                    Modifier.fillMaxWidth().padding(top = 10.dp),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = onClose) { Text("Cancel") }
+                    Spacer(Modifier.width(6.dp))
+                    Button(
+                        onClick = {
+                            val p = connectPort
+                            if (targetHost.isNotBlank() && p != null) {
+                                onAdd(targetHost, p, pairingPort.toIntOrNull(), code.ifBlank { null })
+                            }
+                        },
+                        enabled = targetHost.isNotBlank() && connectPort != null
+                    ) { Text("Add") }
+                }
+            }
+        }
+    }
 }
 
 @Composable
