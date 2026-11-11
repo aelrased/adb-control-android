@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -348,55 +349,74 @@ private fun Header(
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .statusBarsPadding()
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+            .clip(RoundedCornerShape(18.dp))
             .background(Brush.horizontalGradient(listOf(AccentBlue, AccentGreen)))
-            .padding(horizontal = 6.dp, vertical = 12.dp)
+            .padding(horizontal = 2.dp, vertical = 2.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onMenu) {
-                Icon(Icons.Outlined.Menu, contentDescription = "Menu", tint = Color.White)
+            IconButton(onClick = onMenu, modifier = Modifier.size(40.dp)) {
+                Icon(
+                    Icons.Outlined.Menu,
+                    contentDescription = "Menu",
+                    tint = Color.White,
+                    modifier = Modifier.size(21.dp)
+                )
             }
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        "ADB Control Android",
+                        label,
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp,
+                        fontSize = 15.sp,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
                     )
-                    Spacer(Modifier.width(8.dp))
+                    Spacer(Modifier.width(6.dp))
                     Surface(color = Color(0x33000000), shape = RoundedCornerShape(6.dp)) {
                         Text(
                             if (connected) "ADB" else "ADB OFF",
                             color = Color.White,
-                            fontSize = 10.sp,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            fontSize = 9.sp,
+                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
                         )
                     }
                 }
                 Text(
-                    label.uppercase() + if (connected && serial.isNotEmpty()) " · $serial" else "",
-                    color = Color(0xFFEAF7EF),
-                    fontSize = 12.sp,
+                    if (serial.isNotEmpty()) serial else "غير متصل",
+                    color = Color(0xE6FFFFFF),
+                    fontSize = 10.5.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            IconButton(onClick = onRefresh) {
-                Icon(Icons.Outlined.Refresh, contentDescription = "Refresh", tint = Color.White)
+            IconButton(onClick = onRefresh, modifier = Modifier.size(38.dp)) {
+                Icon(
+                    Icons.Outlined.Refresh,
+                    contentDescription = "Refresh",
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp)
+                )
             }
-            IconButton(onClick = onMore) {
-                Icon(Icons.Outlined.MoreVert, contentDescription = "More", tint = Color.White)
+            IconButton(onClick = onMore, modifier = Modifier.size(38.dp)) {
+                Icon(
+                    Icons.Outlined.MoreVert,
+                    contentDescription = "More",
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp)
+                )
             }
         }
         if (showSearch) {
             TextField(
                 value = query,
                 onValueChange = onQuery,
-                modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                modifier = Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, bottom = 6.dp),
                 singleLine = true,
-                placeholder = { Text("Search apps or packages…", color = Color(0xCCFFFFFF)) },
+                placeholder = { Text("Search apps or packages…", color = Color(0xCCFFFFFF), fontSize = 13.sp) },
                 colors = TextFieldDefaults.colors(
                     focusedContainerColor = Color.Transparent,
                     unfocusedContainerColor = Color.Transparent,
