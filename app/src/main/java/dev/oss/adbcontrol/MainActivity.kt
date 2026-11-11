@@ -1285,7 +1285,10 @@ private fun DrawerContent(
     onSyncRemote: () -> Unit
 ) {
     val context = LocalContext.current
-    ModalDrawerSheet(drawerContainerColor = Color(0xFF12161D)) {
+    ModalDrawerSheet(
+        drawerContainerColor = Color(0xFF12161D),
+        modifier = Modifier.fillMaxWidth(0.72f)
+    ) {
         Column(
             Modifier
                 .fillMaxHeight()
@@ -1405,7 +1408,7 @@ private fun DrawerDeviceRow(
     onRemove: (() -> Unit)?
 ) {
     Surface(
-        color = if (active) Color(0xFF17301F) else Color(0xFF1A1F27),
+        color = if (active) AccentGreen else Color(0xFF1A1F27),
         shape = RoundedCornerShape(12.dp),
         modifier = Modifier
             .fillMaxWidth()
@@ -1416,26 +1419,43 @@ private fun DrawerDeviceRow(
             Icon(
                 Icons.Outlined.PhoneAndroid,
                 contentDescription = null,
-                tint = if (active) AccentGreen else TextMuted
+                tint = if (active) Color.White else TextMuted
             )
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Text(
                     device.label,
-                    color = TextMain, fontWeight = FontWeight.SemiBold, fontSize = 13.sp,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis
+                    color = if (active) Color.White else TextMain,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    if (device.isSelf) "This device" else "${device.host}:${device.port}",
-                    color = if (active) AccentGreen else TextMuted, fontSize = 11.sp
+                    if (device.isSelf) "هذا الجهاز" else "${device.host}:${device.port}",
+                    color = if (active) Color(0xFFDDFBE8) else TextMuted,
+                    fontSize = 11.sp
                 )
             }
             if (active) {
-                Text("ADB", color = AccentGreen, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Surface(color = Color(0x33000000), shape = RoundedCornerShape(6.dp)) {
+                    Text(
+                        "ADB",
+                        color = Color.White,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
             }
             if (onRemove != null) {
                 IconButton(onClick = onRemove, modifier = Modifier.size(30.dp)) {
-                    Icon(Icons.Outlined.Delete, contentDescription = "Remove", tint = TextMuted, modifier = Modifier.size(16.dp))
+                    Icon(
+                        Icons.Outlined.Delete,
+                        contentDescription = "Remove",
+                        tint = if (active) Color.White.copy(alpha = 0.9f) else TextMuted,
+                        modifier = Modifier.size(16.dp)
+                    )
                 }
             }
         }
