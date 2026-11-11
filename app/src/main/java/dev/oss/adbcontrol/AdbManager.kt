@@ -149,11 +149,14 @@ class AdbManager(private val context: Context) {
             val client = Kadb.create(host, port, connectTimeout = 8000, socketTimeout = 8000)
             val model = client.shell("getprop ro.product.model").output.trim().ifEmpty { host }
             val serial = client.shell("getprop ro.serialno").output.trim()
-            val id = "net:$host:$port"
+            val self = isLocalHost(host)
+            val id = if (self) "self" else "net:$host:$port"
             clients[id]?.close()
             clients[id] = client
-            val device = DeviceInfo(id, model, serial, host, port, false)
-            val devices = _state.value.devices.filterNot { it.id == id } + device
+            val device = DeviceInfo(id, model, serial, host, port, self)
+            val devices = _state.value.devices.filterNot {
+                it.id == id || (self && !it.isSelf && it.host == host)
+            } + device
             saveDevices(devices)
             _state.value = _state.value.copy(
                 devices = devices,
@@ -294,6 +297,17 @@ class AdbManager(private val context: Context) {
         stopDiscovery()
         clients.values.forEach { runCatching { it.close() } }
         clients.clear()
+    }
+
+    /** True when the host is this device itself (loopback or its own Wi-Fi IP). */
+    private fun isLocalHost(host: String): Boolean {
+        val h = host.trim()
+        if (h == "127.0.0.1" || h.equals("localhost", ignoreCase = true)) return true
+        return runCatching {
+            java.net.NetworkInterface.getNetworkInterfaces().toList()
+                .flatMap { it.inetAddresses.toList() }
+                .any { it is java.net.Inet4Address && it.hostAddress == h }
+        }.getOrDefault(false)
     }
 
     private fun saveDevices(devices: List<DeviceInfo>) {
