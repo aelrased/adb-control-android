@@ -1291,26 +1291,33 @@ private fun DrawerContent(
                 .fillMaxHeight()
                 .verticalScroll(rememberScrollState())
         ) {
-            Box(
+            Row(
                 Modifier
                     .fillMaxWidth()
-                    .height(140.dp)
                     .background(Brush.horizontalGradient(listOf(AccentBlue, AccentGreen)))
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    Modifier.fillMaxSize().padding(18.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Image(
-                        painterResource(R.mipmap.ic_launcher),
-                        contentDescription = null,
-                        modifier = Modifier.size(52.dp).clip(RoundedCornerShape(14.dp))
+                Image(
+                    painterResource(R.mipmap.ic_launcher),
+                    contentDescription = null,
+                    modifier = Modifier.size(34.dp).clip(RoundedCornerShape(9.dp))
+                )
+                Spacer(Modifier.width(10.dp))
+                Column {
+                    Text(
+                        "ADB Control Android",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        maxLines = 1
                     )
-                    Spacer(Modifier.width(12.dp))
-                    Column {
-                        Text("ADB Control Android", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                        Text("Android · Open Source · GPL-3.0", color = Color(0xFFEAF7EF), fontSize = 11.sp)
-                    }
+                    Text(
+                        "Open Source · GPL-3.0",
+                        color = Color(0xFFEAF7EF),
+                        fontSize = 9.5.sp,
+                        maxLines = 1
+                    )
                 }
             }
 
@@ -1364,10 +1371,6 @@ private fun DrawerContent(
                 }
             }
 
-            OutlinedButton(
-                onClick = onAddDevice,
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp).fillMaxWidth()
-            ) { Text("+ Add network device") }
 
             Card(
                 colors = CardDefaults.cardColors(containerColor = Color(0xFF1E2430)),
