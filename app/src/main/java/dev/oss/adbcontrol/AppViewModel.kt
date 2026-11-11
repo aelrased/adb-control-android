@@ -111,6 +111,31 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         _selection.value = packages.toSet()
     }
 
+    /** Re-enable every app that is currently disabled (Disabled tab shortcut). */
+    fun enableAllDisabled() {
+        viewModelScope.launch {
+            if (!adb.state.value.connected) {
+                emit("هذا الإجراء يحتاج اتصال ADB")
+                return@launch
+            }
+            val packages = _apps.value.filter { !it.enabled }.map { it.packageName }
+            if (packages.isEmpty()) {
+                emit("لا توجد تطبيقات معطّلة")
+                return@launch
+            }
+            emit("جارٍ تفعيل ${packages.size} تطبيق…")
+            var done = 0
+            for (pkg in packages) {
+                val out = adb.shell("pm enable $pkg")
+                if (out != null && !out.contains("Exception") &&
+                    !out.contains("Failure") && !out.contains("Error")
+                ) done++
+            }
+            emit("تم تفعيل $done/${packages.size}")
+            reloadApps()
+        }
+    }
+
     fun bulkDisable() = bulkShell("disable")
     fun bulkEnable() = bulkShell("enable")
     fun bulkClear() = bulkShell("clear")

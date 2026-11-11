@@ -63,6 +63,7 @@ import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DrawerValue
@@ -228,6 +229,8 @@ private fun Root(vm: AppViewModel) {
                 } else {
                     BottomBar(
                         filter = filter,
+                        disabledCount = apps.count { !it.enabled },
+                        onEnableAll = { vm.enableAllDisabled() },
                         onFilter = {
                             vm.filter.value = it
                             screen = "apps"
@@ -409,8 +412,33 @@ private fun Header(
 }
 
 @Composable
-private fun BottomBar(filter: AppFilter, onFilter: (AppFilter) -> Unit, onSearch: () -> Unit) {
-    NavigationBar(containerColor = Color(0xFF12161D), tonalElevation = 0.dp) {
+private fun BottomBar(
+    filter: AppFilter,
+    disabledCount: Int,
+    onFilter: (AppFilter) -> Unit,
+    onEnableAll: () -> Unit,
+    onSearch: () -> Unit
+) {
+    Column(Modifier.fillMaxWidth().background(Color(0xFF12161D))) {
+        if (filter == AppFilter.DISABLED) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "معطّل: $disabledCount",
+                    color = TextMuted,
+                    fontSize = 12.sp,
+                    modifier = Modifier.weight(1f)
+                )
+                Button(
+                    onClick = onEnableAll,
+                    enabled = disabledCount > 0,
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentGreen)
+                ) { Text("تفعيل الكل") }
+            }
+        }
+        NavigationBar(containerColor = Color(0xFF12161D), tonalElevation = 0.dp) {
         val items = listOf(
             Triple("All", Icons.Outlined.Apps, AppFilter.ALL),
             Triple("User", Icons.Outlined.Person, AppFilter.USER),
@@ -432,6 +460,7 @@ private fun BottomBar(filter: AppFilter, onFilter: (AppFilter) -> Unit, onSearch
                     unselectedTextColor = TextMuted
                 )
             )
+        }
         }
     }
 }
