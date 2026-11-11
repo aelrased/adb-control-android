@@ -230,8 +230,6 @@ private fun Root(vm: AppViewModel) {
                 } else {
                     BottomBar(
                         filter = filter,
-                        disabledCount = apps.count { !it.enabled },
-                        onEnableAll = { vm.enableAllDisabled() },
                         onFilter = {
                             vm.filter.value = it
                             screen = "apps"
@@ -434,44 +432,24 @@ private fun Header(
 @Composable
 private fun BottomBar(
     filter: AppFilter,
-    disabledCount: Int,
     onFilter: (AppFilter) -> Unit,
-    onEnableAll: () -> Unit,
     onSearch: () -> Unit
 ) {
-    Column(Modifier.fillMaxWidth().background(Color(0xFF12161D))) {
-        if (filter == AppFilter.DISABLED) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    "معطّل: $disabledCount",
-                    color = TextMuted,
-                    fontSize = 12.sp,
-                    modifier = Modifier.weight(1f)
-                )
-                Button(
-                    onClick = onEnableAll,
-                    enabled = disabledCount > 0,
-                    colors = ButtonDefaults.buttonColors(containerColor = AccentGreen)
-                ) { Text("تفعيل الكل") }
-            }
-        }
-        NavigationBar(containerColor = Color(0xFF12161D), tonalElevation = 0.dp) {
+    NavigationBar(containerColor = Color(0xFF12161D), tonalElevation = 0.dp) {
         val items = listOf(
             Triple("All", Icons.Outlined.Apps, AppFilter.ALL),
             Triple("User", Icons.Outlined.Person, AppFilter.USER),
             Triple("System", Icons.Outlined.PhoneAndroid, AppFilter.SYSTEM),
             Triple("Disabled", Icons.Outlined.Block, AppFilter.DISABLED),
+            Triple("Enabled", Icons.Outlined.CheckCircle, AppFilter.ENABLED),
             Triple("Search", Icons.Outlined.Search, null)
         )
         items.forEach { (label, icon, value) ->
             NavigationBarItem(
                 selected = value != null && filter == value,
                 onClick = { if (value != null) onFilter(value) else onSearch() },
-                icon = { Icon(icon, contentDescription = label) },
-                label = { Text(label, fontSize = 11.sp) },
+                icon = { Icon(icon, contentDescription = label, modifier = Modifier.size(20.dp)) },
+                label = { Text(label, fontSize = 8.5.sp, maxLines = 1, softWrap = false) },
                 colors = NavigationBarItemDefaults.colors(
                     selectedIconColor = Color.White,
                     selectedTextColor = Color.White,
@@ -480,7 +458,6 @@ private fun BottomBar(
                     unselectedTextColor = TextMuted
                 )
             )
-        }
         }
     }
 }
@@ -508,6 +485,7 @@ private fun AppList(
                 AppFilter.USER -> !app.system
                 AppFilter.SYSTEM -> app.system
                 AppFilter.DISABLED -> !app.enabled
+                AppFilter.ENABLED -> app.enabled
             } && (q.isEmpty() || app.label.lowercase(Locale.getDefault()).contains(q) ||
                 app.packageName.lowercase(Locale.getDefault()).contains(q))
         }
@@ -518,6 +496,17 @@ private fun AppList(
         }
     }
 
+    Column(Modifier.fillMaxSize()) {
+        if (filter == AppFilter.DISABLED || filter == AppFilter.ENABLED) {
+            val disabledTab = filter == AppFilter.DISABLED
+            Text(
+                "${filtered.size} " + if (disabledTab) "تطبيق معطّل" else "تطبيق مفعّل",
+                color = if (disabledTab) Color(0xFFFFCF70) else AccentGreen,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(start = 16.dp, top = 8.dp)
+            )
+        }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(12.dp),
@@ -555,6 +544,7 @@ private fun AppList(
                 textAlign = TextAlign.Center
             )
         }
+    }
     }
 }
 

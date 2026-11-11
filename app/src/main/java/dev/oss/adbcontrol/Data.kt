@@ -13,7 +13,7 @@ data class AppEntry(
     val icon: ImageBitmap?
 )
 
-enum class AppFilter { ALL, USER, SYSTEM, DISABLED }
+enum class AppFilter { ALL, USER, SYSTEM, DISABLED, ENABLED }
 
 enum class AppSort { NAME, DATE, SIZE }
 
