@@ -37,6 +37,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.CheckCircle
@@ -106,6 +107,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.text.KeyboardOptions
@@ -408,6 +411,7 @@ private fun BottomBar(filter: AppFilter, onFilter: (AppFilter) -> Unit, onSearch
             Triple("All", Icons.Outlined.Apps, AppFilter.ALL),
             Triple("User", Icons.Outlined.Person, AppFilter.USER),
             Triple("System", Icons.Outlined.PhoneAndroid, AppFilter.SYSTEM),
+            Triple("Disabled", Icons.Outlined.Block, AppFilter.DISABLED),
             Triple("Search", Icons.Outlined.Search, null)
         )
         items.forEach { (label, icon, value) ->
@@ -758,70 +762,114 @@ private fun PairingDialog(
     var code by remember { mutableStateOf("") }
     LaunchedEffect(Unit) { onStart() }
 
-    AlertDialog(
+    Dialog(
         onDismissRequest = onClose,
-        title = { Text("Connect over ADB") },
-        text = {
-            Column {
-                Text(
-                    "1) فعّل Developer options ثم Wireless debugging.\n" +
-                        "2) اضغط «Pair device with pairing code».\n" +
-                        "3) استخدم Split screen وأدخل الرمز هنا (النافذة تُلغي الرمز إذا أُغلقت).",
-                    fontSize = 12.sp
-                )
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    "Pairing: " + (adb.pairingEndpoint?.let { "${it.host}:${it.port}" } ?: "جارٍ البحث…"),
-                    fontSize = 11.sp,
-                    color = TextMuted
-                )
-                Text(
-                    "Connect: " + (adb.connectEndpoint?.let { "${it.host}:${it.port}" } ?: "غير متاح"),
-                    fontSize = 11.sp,
-                    color = TextMuted
-                )
-                Spacer(Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = code,
-                    onValueChange = { code = it.filter(Char::isDigit).take(6) },
-                    label = { Text("6-digit code") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                )
-                if (adb.message.isNotEmpty()) {
-                    Text(adb.message, fontSize = 11.sp, color = Color(0xFFFFCF70), modifier = Modifier.padding(top = 6.dp))
-                }
-                TextButton(onClick = onLocal) {
-                    Text("استخدام هذا الجهاز (IP الواي فاي تلقائياً)")
-                }
-                Text(
-                    "يُكتشف عنوان IP للواي فاي تلقائياً ثم يتصل بالمنفذ 5555، مع محاولة 127.0.0.1 كبديل. وافق على Allow USB debugging على الشاشة ثم أعد المحاولة.",
-                    fontSize = 10.5.sp,
-                    color = TextMuted
-                )
-                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            color = Color(0xFF12161D),
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier.fillMaxWidth(0.96f).fillMaxHeight(0.94f)
+        ) {
+            Column(Modifier.fillMaxSize().padding(14.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        "الاقتران الذاتي يتطلب Android 11 أو أحدث. على Android 10 يلزم تفعيل adb tcpip من كمبيوتر.",
-                        fontSize = 11.sp,
-                        color = Danger,
-                        modifier = Modifier.padding(top = 6.dp)
+                        "Connect over ADB",
+                        color = TextMain,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        modifier = Modifier.weight(1f)
                     )
+                    IconButton(onClick = onClose) {
+                        Icon(Icons.Outlined.Close, contentDescription = "Close", tint = TextMuted)
+                    }
                 }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = { onPair(code) },
-                enabled = !adb.busy && code.length == 6 && adb.pairingEndpoint != null
-            ) { Text("Pair") }
-        },
-        dismissButton = {
-            Row {
-                TextButton(onClick = onConnect, enabled = !adb.busy) { Text("Connect") }
-                TextButton(onClick = onClose) { Text("Close") }
+
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    Text(
+                        "Pairing: " + (adb.pairingEndpoint?.let { "${it.host}:${it.port}" } ?: "جارٍ البحث…"),
+                        fontSize = 12.sp,
+                        color = if (adb.pairingEndpoint != null) AccentGreen else TextMuted
+                    )
+                    Text(
+                        "Connect: " + (adb.connectEndpoint?.let { "${it.host}:${it.port}" } ?: "غير متاح"),
+                        fontSize = 12.sp,
+                        color = TextMuted
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = code,
+                        onValueChange = { code = it.filter(Char::isDigit).take(6) },
+                        label = { Text("6-digit pairing code") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (adb.message.isNotEmpty()) {
+                        Text(
+                            adb.message,
+                            fontSize = 11.sp,
+                            color = Color(0xFFFFCF70),
+                            modifier = Modifier.padding(top = 6.dp)
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Button(
+                        onClick = { onPair(code) },
+                        enabled = !adb.busy && code.length == 6 && adb.pairingEndpoint != null,
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Pair") }
+                    OutlinedButton(
+                        onClick = onConnect,
+                        enabled = !adb.busy,
+                        modifier = Modifier.fillMaxWidth().padding(top = 6.dp)
+                    ) { Text("Connect") }
+                    TextButton(
+                        onClick = onStart,
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("إعادة البحث عن منفذ الاقتران") }
+
+                    HorizontalDivider(color = Divider, modifier = Modifier.padding(vertical = 8.dp))
+
+                    TextButton(onClick = onLocal, modifier = Modifier.fillMaxWidth()) {
+                        Text("استخدام هذا الجهاز (IP الواي فاي تلقائياً)")
+                    }
+                    Text(
+                        "يُكتشف عنوان IP للواي فاي تلقائياً ثم يتصل بالمنفذ 5555، مع محاولة 127.0.0.1 كبديل. " +
+                            "وافق على Allow USB debugging على الشاشة ثم أعد المحاولة.",
+                        fontSize = 11.sp,
+                        color = TextMuted
+                    )
+
+                    Spacer(Modifier.height(10.dp))
+                    Text("خطوات الاقتران اللاسلكي", color = TextMain, fontWeight = FontWeight.SemiBold, fontSize = 12.5.sp)
+                    Text(
+                        "1) فعّل Developer options ثم Wireless debugging.\n" +
+                            "2) اضغط «Pair device with pairing code».\n" +
+                            "3) استخدم Split screen (أو اسحب من الأسفل) وأدخل الرمز هنا.\n" +
+                            "4) بعد نجاح الاقتران اضغط Connect.",
+                        fontSize = 11.5.sp,
+                        color = TextMuted,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+                        Text(
+                            "الاقتران الذاتي يتطلب Android 11 أو أحدث. على Android 10 يلزم تفعيل adb tcpip من كمبيوتر.",
+                            fontSize = 11.sp,
+                            color = Danger,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
             }
         }
-    )
+    }
 }
 
 @Composable
@@ -865,7 +913,12 @@ private fun CleanScreen(vm: AppViewModel) {
             singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
-        Spacer(Modifier.height(6.dp))
+        Text(
+            "${filtered.size} من ${profiles.size} ملف تعريف — مرّر للأسفل لعرضها كلها",
+            color = TextMuted,
+            fontSize = 10.5.sp,
+            modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
+        )
 
         Card(colors = CardDefaults.cardColors(containerColor = CardBg)) {
             Column(Modifier.padding(12.dp)) {
@@ -1104,7 +1157,11 @@ private fun DrawerContent(
 ) {
     val context = LocalContext.current
     ModalDrawerSheet(drawerContainerColor = Color(0xFF12161D)) {
-        Column(Modifier.fillMaxHeight()) {
+        Column(
+            Modifier
+                .fillMaxHeight()
+                .verticalScroll(rememberScrollState())
+        ) {
             Box(
                 Modifier
                     .fillMaxWidth()
@@ -1139,6 +1196,8 @@ private fun DrawerContent(
             DrawerItem(Icons.Outlined.InstallMobile, "Install APK") { onInstallApk() }
             DrawerItem(Icons.Outlined.Sync, "Sync remote data") { onSyncRemote() }
             DrawerItem(Icons.Outlined.CleaningServices, "CleanYourTV") { onNavigate("clean") }
+            DrawerItem(Icons.Outlined.Add, "Add network device") { onAddDevice() }
+            DrawerItem(Icons.Outlined.PhoneAndroid, "Connect over ADB") { onConnectSelf() }
 
             HorizontalDivider(color = Divider, modifier = Modifier.padding(vertical = 6.dp))
 
