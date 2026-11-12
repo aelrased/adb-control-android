@@ -200,6 +200,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Runs an arbitrary shell command through ADB (or Shizuku when ADB is offline). */
+    suspend fun execShell(command: String): String? = withContext(Dispatchers.IO) {
+        adb.shell(command)
+    }
+
+    fun shellAvailable(): Boolean = adb.state.value.canShell
+
     suspend fun uadInfo(pkg: String): UadInfo? = uad.info(pkg)
 
     /** Packages uninstalled for user 0 but still present on the device (restorable). */

@@ -11,6 +11,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -63,6 +66,7 @@ import androidx.compose.material.icons.outlined.SaveAlt
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Sync
+import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -75,6 +79,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
@@ -260,6 +265,7 @@ private fun Root(vm: AppViewModel) {
                     "settings" -> SettingsScreen(vm)
                     "clean" -> CleanScreen(vm)
                     "removed" -> RemovedScreen(vm)
+                    "shell" -> ShellScreen(vm)
                     "library" -> LibraryScreen(
                         vm = vm,
                         onInstall = { installLauncher.launch(arrayOf("*/*")) }
@@ -1178,6 +1184,111 @@ private fun CleanScreen(vm: AppViewModel) {
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ShellScreen(vm: AppViewModel) {
+    val adb by vm.adbState.collectAsStateWithLifecycle()
+    var command by remember { mutableStateOf("") }
+    var entries by remember { mutableStateOf(listOf<Pair<String, String>>()) }
+    var running by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+
+    fun run(cmd: String) {
+        val trimmed = cmd.trim()
+        if (trimmed.isEmpty() || running) return
+        running = true
+        scope.launch {
+            val out = vm.execShell(trimmed) ?: "— لا يوجد اتصال ADB/Shizuku —"
+            entries = entries + (trimmed to out.ifBlank { "(no output)" })
+            command = ""
+            running = false
+        }
+    }
+
+    Column(Modifier.fillMaxSize().padding(14.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Shell Console", color = TextMain, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            Spacer(Modifier.weight(1f))
+            Surface(
+                color = if (adb.canShell) Color(0x3327AE60) else Color(0x33FF6B6B),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text(
+                    when {
+                        adb.connected -> "ADB"
+                        adb.shizukuReady -> "Shizuku"
+                        else -> "OFF"
+                    },
+                    color = if (adb.canShell) AccentGreen else Danger,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                )
+            }
+            TextButton(onClick = { entries = emptyList() }) { Text("Clear") }
+        }
+
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(
+                value = command,
+                onValueChange = { command = it },
+                modifier = Modifier.weight(1f),
+                singleLine = true,
+                label = { Text("adb shell command") },
+                textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace, fontSize = 13.sp)
+            )
+            Spacer(Modifier.width(8.dp))
+            Button(
+                onClick = { run(command) },
+                enabled = !running && command.isNotBlank()
+            ) { Text(if (running) "…" else "Run") }
+        }
+
+        Row(
+            Modifier.fillMaxWidth().padding(top = 6.dp).horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            val quick = listOf(
+                "getprop ro.product.model",
+                "pm list packages -3 | head -30",
+                "pm list packages -d",
+                "df -h /data",
+                "dumpsys battery | head -12",
+                "settings get global adb_wifi_enabled"
+            )
+            quick.forEach { q ->
+                OutlinedButton(onClick = { run(q) }, enabled = !running) {
+                    Text(q, fontSize = 10.sp, maxLines = 1)
+                }
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+        SelectionContainer(Modifier.weight(1f)) {
+            LazyColumn(
+                Modifier.fillMaxSize().background(Color(0xFF0B0E13), RoundedCornerShape(10.dp)).padding(10.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                reverseLayout = true
+            ) {
+                items(entries.asReversed()) { (cmd, out) ->
+                    Column {
+                        Text("$ $cmd", color = AccentGreen, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+                        Text(out, color = TextMain, fontFamily = FontFamily.Monospace, fontSize = 11.5.sp)
+                    }
+                }
+            }
+        }
+
+        Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = {
+                val text = entries.joinToString("\n\n") { (c, o) -> "\$ $c\n$o" }
+                val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("shell", text))
+            }) { Text("Copy all") }
         }
     }
 }
