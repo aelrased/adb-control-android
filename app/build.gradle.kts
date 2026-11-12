@@ -63,5 +63,9 @@ dependencies {
     // Open-source ADB client with wireless-debugging pairing (Apache-2.0)
     implementation("com.flyfishxu:kadb:2.1.1")
 
+    // Shizuku: optional shell backend without keeping an ADB connection
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
+
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

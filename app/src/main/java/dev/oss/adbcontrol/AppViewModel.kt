@@ -121,8 +121,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val packages = _selection.value.toList()
         if (packages.isEmpty()) return
         viewModelScope.launch {
-            if (!adb.state.value.connected) {
-                emit("هذا الإجراء يحتاج اتصال ADB")
+            if (!adb.state.value.canShell) {
+                emit("هذا الإجراء يحتاج ADB أو Shizuku")
                 return@launch
             }
             if (kind == "clear_cache") {
@@ -249,8 +249,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun applyDebloat(profile: String, enable: Boolean) {
         viewModelScope.launch {
-            if (!adb.state.value.connected) {
-                emit("يتطلب اتصال ADB بالجهاز")
+            if (!adb.state.value.canShell) {
+                emit("يتطلب ADB أو Shizuku")
                 return@launch
             }
             val packages = cyt.packages(profile)

@@ -35,6 +35,12 @@ data class AdbUiState(
     val active: DeviceInfo? get() = devices.firstOrNull { it.id == activeId }
     val serial: String get() = active?.serial ?: ""
     val label: String get() = active?.label ?: ""
+
+    /** Shizuku is running and this app holds its permission. */
+    val shizukuReady: Boolean get() = ShizukuShell.ready
+
+    /** Shell commands can run through ADB or through Shizuku. */
+    val canShell: Boolean get() = connected || shizukuReady
 }
 
 /**
@@ -265,11 +271,15 @@ class AdbManager(private val context: Context) {
     }
 
     suspend fun shell(command: String): String? = withContext(Dispatchers.IO) {
-        val id = _state.value.activeId ?: return@withContext null
-        val client = clients[id] ?: return@withContext null
-        runCatching {
-            shellMutex.withLock { withTimeout(25_000) { client.shell(command).output } }
-        }.getOrNull()
+        val client = _state.value.activeId?.let { clients[it] }
+        if (client != null) {
+            return@withContext runCatching {
+                shellMutex.withLock { withTimeout(25_000) { client.shell(command).output } }
+            }.getOrNull()
+        }
+        // No ADB connection: fall back to Shizuku (same shell privileges).
+        if (ShizukuShell.ready) return@withContext ShizukuShell.run(command)
+        null
     }
 
     fun activeDeviceId(): String? = _state.value.activeId

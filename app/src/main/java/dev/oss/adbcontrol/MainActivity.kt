@@ -196,6 +196,7 @@ private fun Root(vm: AppViewModel) {
                 Column {
                     Header(
                         connected = adb.connected,
+                        adbReady = adb.shizukuReady,
                         label = adb.label.ifEmpty { "${Build.MANUFACTURER} ${Build.MODEL}".uppercase() },
                         serial = adb.serial,
                         showSearch = showSearch,
@@ -300,7 +301,7 @@ private fun Root(vm: AppViewModel) {
     actionsApp?.let { app ->
         ActionsSheet(
             app = app,
-            adbConnected = adb.connected,
+            adbConnected = adb.connected || adb.shizukuReady,
             onDismiss = { actionsApp = null },
             onAction = { action ->
                 vm.perform(action, app)
@@ -335,6 +336,7 @@ private fun Root(vm: AppViewModel) {
 @Composable
 private fun Header(
     connected: Boolean,
+    adbReady: Boolean,
     label: String,
     serial: String,
     showSearch: Boolean,
@@ -376,7 +378,11 @@ private fun Header(
                     Spacer(Modifier.width(6.dp))
                     Surface(color = Color(0x33000000), shape = RoundedCornerShape(6.dp)) {
                         Text(
-                            if (connected) "ADB" else "ADB OFF",
+                            when {
+                                connected -> "ADB"
+                                adbReady -> "SZK"
+                                else -> "ADB OFF"
+                            },
                             color = Color.White,
                             fontSize = 9.sp,
                             modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
@@ -1036,11 +1042,11 @@ private fun CleanScreen(vm: AppViewModel) {
                 Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(
                         onClick = { selected?.let { vm.applyDebloat(it, false) } },
-                        enabled = selected != null && adb.connected
+                        enabled = selected != null && (adb.connected || adb.shizukuReady)
                     ) { Text("تعطيل") }
                     OutlinedButton(
                         onClick = { selected?.let { vm.applyDebloat(it, true) } },
-                        enabled = selected != null && adb.connected
+                        enabled = selected != null && (adb.connected || adb.shizukuReady)
                     ) { Text("استعادة") }
                 }
                 Text(
@@ -1049,8 +1055,8 @@ private fun CleanScreen(vm: AppViewModel) {
                     fontSize = 10.5.sp,
                     modifier = Modifier.padding(top = 4.dp)
                 )
-                if (!adb.connected) {
-                    Text("يتطلب اتصال ADB بالجهاز", color = Danger, fontSize = 11.sp)
+                if (!adb.connected && !adb.shizukuReady) {
+                    Text("يتطلب ADB أو Shizuku", color = Danger, fontSize = 11.sp)
                 }
             }
         }
@@ -1091,6 +1097,7 @@ private fun CleanScreen(vm: AppViewModel) {
 @Composable
 private fun SettingsScreen(vm: AppViewModel) {
     val context = LocalContext.current
+    val adb by vm.adbState.collectAsStateWithLifecycle()
     val monitoring by vm.monitoring.collectAsStateWithLifecycle()
     val beta by vm.beta.collectAsStateWithLifecycle()
 
@@ -1120,6 +1127,20 @@ private fun SettingsScreen(vm: AppViewModel) {
             color = TextMuted, fontSize = 12.sp
         )
         ValueRow("TCP/IP port", "5555")
+
+        SectionTitle("مصدر الصلاحيات")
+        ValueRow(
+            "ADB (Wireless debugging)",
+            if (adb.connected) "متصل" else "غير متصل"
+        )
+        ShizukuStatusRow()
+        Text(
+            "يمكن الاعتماد على ADB أو Shizuku أو كليهما: إن لم يكن ADB متصلاً يستخدم التطبيق Shizuku تلقائياً " +
+                "لأوامر التعطيل/التفعيل/مسح الكاش/الحذف.",
+            color = TextMuted,
+            fontSize = 11.sp,
+            modifier = Modifier.padding(top = 2.dp)
+        )
 
         SectionTitle("Development")
         SwitchRow(
@@ -1156,6 +1177,51 @@ private fun SectionTitle(text: String) {
         fontWeight = FontWeight.SemiBold,
         modifier = Modifier.padding(top = 18.dp, bottom = 6.dp)
     )
+}
+
+@Composable
+private fun ShizukuStatusRow() {
+    val context = LocalContext.current
+    var running by remember { mutableStateOf(ShizukuShell.isRunning()) }
+    var granted by remember { mutableStateOf(ShizukuShell.hasPermission()) }
+
+    val listener = remember {
+        rikka.shizuku.Shizuku.OnRequestPermissionResultListener { _, result ->
+            granted = result == PackageManager.PERMISSION_GRANTED
+        }
+    }
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        runCatching { rikka.shizuku.Shizuku.addRequestPermissionResultListener(listener) }
+        onDispose {
+            runCatching { rikka.shizuku.Shizuku.removeRequestPermissionResultListener(listener) }
+        }
+    }
+
+    val state = when {
+        !running -> "غير مثبّت أو غير يعمل"
+        granted -> "جاهز" + ShizukuShell.version()?.let { " (v$it)" }.orEmpty()
+        else -> "يعمل — يحتاج صلاحية"
+    }
+    ValueRow("Shizuku", state)
+    Row {
+        if (running && !granted) {
+            TextButton(onClick = {
+                ShizukuShell.requestPermission()
+                granted = ShizukuShell.hasPermission()
+            }) { Text("منح صلاحية Shizuku") }
+        }
+        if (!running) {
+            TextButton(onClick = {
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://shizuku.rikka.app/"))
+                context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }) { Text("تثبيت Shizuku") }
+        } else {
+            TextButton(onClick = {
+                running = ShizukuShell.isRunning()
+                granted = ShizukuShell.hasPermission()
+            }) { Text("تحديث الحالة") }
+        }
+    }
 }
 
 @Composable

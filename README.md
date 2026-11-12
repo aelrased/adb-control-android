@@ -44,6 +44,7 @@
 |---|---|
 | اللغة/الواجهة | Kotlin 2.0 + Jetpack Compose (Material 3) |
 | ADB | [Kadb](https://github.com/flyfishxu/Kadb) (Apache‑2.0) |
+| صلاحيات بديلة | [Shizuku](https://shizuku.rikka.app/) (Apache‑2.0) |
 | الاكتشاف | `kadb-mdns` عبر `NsdManager` |
 | الأيقونات | `PackageManager` مباشرة |
 | الحد الأدنى | Android 9 (API 28) |
@@ -55,6 +56,16 @@
 3. يُدخل المستخدم الرمز (6 أرقام) → SPAKE2 + TLS عبر Kadb → حفظ المفتاح في `filesDir/adbkey.pem`.
 4. يتصل التطبيق بمنفذ `_adb-tls-connect._tcp` ويحصل على shell بمستخدم `shell`.
 5. تُنفَّذ أوامر `pm disable-user` / `pm enable` / `pm clear` / `pm uninstall`.
+
+### مصدر الصلاحيات: ADB أو Shizuku (أو كليهما)
+
+- **ADB**: عبر اقتران Wireless debugging (يعمل دائماً، ويحتاج المنفذ).
+- **Shizuku**: إن كان Shizuku مثبتاً ويعمل، يستخدم التطبيق صلاحياته تلقائياً عند عدم وجود اتصال ADB.
+- **الأولوية**: ADB إن كان متصلاً، وإلا Shizuku. أوامر التعطيل/التفعيل/مسح الكاش/الحذف تعمل عبر الاثنين.
+- من **Settings ← مصدر الصلاحيات** يمكن منح صلاحية Shizuku أو تثبيته، وتظهر حالة كل مصدر.
+- الإجراءات التي تحتاج نقل ملفات (تثبيت APK، استخراج APK، النسخ الاحتياطي) تبقى بحاجة إلى ADB.
+
+> الشكر لمشروع [Canta](https://github.com/samolego/Canta) (LGPL‑3.0) على إلهام فكرة الاعتماد على Shizuku للحذف/الاستعادة.
 
 ### إدخال بيانات الاقتران يدوياً
 
