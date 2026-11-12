@@ -390,7 +390,11 @@ private fun Header(
                     }
                 }
                 Text(
-                    if (serial.isNotEmpty()) serial else "غير متصل",
+                    when {
+                        serial.isNotEmpty() -> serial
+                        adbReady -> "Shizuku يعمل — بدون ADB"
+                        else -> "غير متصل"
+                    },
                     color = Color(0xE6FFFFFF),
                     fontSize = 10.5.sp,
                     maxLines = 1,
@@ -520,7 +524,7 @@ private fun AppList(
     ) {
         if (!adb.connected) {
             item {
-                ConnectBanner(adb = adb, onConnect = onConnect)
+                if (adb.shizukuReady) ShizukuBanner() else ConnectBanner(adb = adb, onConnect = onConnect)
             }
         } else if (needsRemoteIcons) {
             item {
@@ -617,6 +621,31 @@ private fun BarAction(
         )
         Spacer(Modifier.width(4.dp))
         Text(label, color = if (danger) Danger else TextMain, fontSize = 12.sp)
+    }
+}
+
+@Composable
+private fun ShizukuBanner() {
+    Surface(
+        color = Color(0xFF11301E),
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Text(
+                "الصلاحيات عبر Shizuku",
+                color = AccentGreen,
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp
+            )
+            Text(
+                "Shizuku يعمل — أوامر التعطيل/التفعيل/مسح الكاش/الحذف متاحة بدون ADB. " +
+                    "الشريط يعرض SZK بدل ADB.",
+                color = TextMuted,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+        }
     }
 }
 
