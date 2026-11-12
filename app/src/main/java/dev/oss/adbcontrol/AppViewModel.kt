@@ -130,9 +130,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             if (kind == "clear_cache") {
                 val sdk = adb.shell("getprop ro.build.version.sdk")?.trim()?.toIntOrNull() ?: 0
                 if (sdk < 30) {
+                    val freed = trimCaches()
                     emit(
-                        if (trimCaches()) "تم تنظيف كاش جميع التطبيقات (Android ${sdk} لا يدعم لكل تطبيق)"
-                        else "فشل التنظيف"
+                        if (freed != null) {
+                            "تم تنظيف كاش جميع التطبيقات" +
+                                (if (freed > 0) " (تحرر ${freed} MB)" else "") +
+                                " (Android ${sdk} لا يدعم لكل تطبيق)"
+                        } else {
+                            "فشل التنظيف"
+                        }
                     )
                     clearSelection()
                     reloadApps()
@@ -152,9 +158,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
                 if (unsupported || cleared == 0) {
+                    val freed = trimCaches()
                     emit(
-                        if (trimCaches()) {
-                            "هذا الجهاز لا يسمح بمسح كاش كل تطبيق — تم تنظيف كاش النظام بالكامل"
+                        if (freed != null) {
+                            "هذا الجهاز لا يسمح بمسح كاش كل تطبيق — تم تنظيف كاش النظام" +
+                                (if (freed > 0) " (تحرر ${freed} MB)" else "")
                         } else {
                             "فشل مسح الكاش على هذا الجهاز"
                         }
@@ -693,10 +701,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             }
             val unsupported = out != null && (out.contains("RC=124") || out.isBlank())
             if (unsupported) {
+                val freed = trimCaches()
                 emit(
-                    if (trimCaches()) {
-                        "هذا الجهاز لا يسمح بمسح كاش تطبيق واحد — تم تنظيف كاش النظام بالكامل. " +
-                            "لمسح بيانات $label استخدم «Clear data»"
+                    if (freed != null) {
+                        "هذا الجهاز لا يسمح بمسح كاش تطبيق واحد — تم تنظيف كاش النظام" +
+                            (if (freed > 0) " (تحرر ${freed} MB)" else "") +
+                            ". لمسح بيانات $label استخدم «Clear data»"
                     } else {
                         "هذا الجهاز لا يسمح بمسح الكاش (صلاحية النظام مطلوبة). استخدم «Clear data»"
                     }
@@ -707,20 +717,37 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             emit("فشل مسح الكاش: ${out?.trim()?.take(140) ?: "لا استجابة"}")
             return
         }
+        val freedAll = trimCaches()
         emit(
-            if (trimCaches()) "تم تنظيف كاش جميع التطبيقات (مسح كاش تطبيق واحد متاح من Android 11+)"
-            else "فشل تنظيف الكاش"
+            if (freedAll != null) {
+                "تم تنظيف كاش جميع التطبيقات" +
+                    (if (freedAll > 0) " (تحرر ${freedAll} MB)" else "") +
+                    " — مسح كاش تطبيق واحد متاح من Android 11+ فقط"
+            } else {
+                "فشل تنظيف الكاش"
+            }
         )
         reloadApps()
     }
 
     /** Frees app caches globally (works even when per-app clearing is blocked). */
-    private suspend fun trimCaches(megabytes: Long = 1024): Boolean {
-        val df = adb.shell("df -k /data | tail -1") ?: return false
-        val freeKb = df.split(Regex("\\s+")).getOrNull(3)?.toLongOrNull() ?: return false
-        val target = freeKb + megabytes * 1024
+    private suspend fun dataFreeKb(): Long? {
+        val df = adb.shell("df -k /data | tail -1") ?: return null
+        return df.split(Regex("\\s+")).getOrNull(3)?.toLongOrNull()
+    }
+
+    /**
+     * Frees app caches globally (works when per-app clearing is blocked).
+     * pm trim-caches takes the desired free space in BYTES.
+     * Returns freed megabytes, or null on failure.
+     */
+    private suspend fun trimCaches(megabytes: Long = 1024): Long? {
+        val before = dataFreeKb() ?: return null
+        val target = before * 1024 + megabytes * 1024 * 1024
         val out = adb.shell("timeout 30 pm trim-caches $target; echo RC=\$?")
-        return out != null && out.contains("RC=0")
+        if (out == null || !out.contains("RC=0")) return null
+        val after = dataFreeKb() ?: return 0L
+        return ((after - before) / 1024).coerceAtLeast(0)
     }
 
     private suspend fun shellAction(command: String, success: String) {

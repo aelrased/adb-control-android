@@ -392,7 +392,7 @@ private fun Header(
                 Text(
                     when {
                         serial.isNotEmpty() -> serial
-                        adbReady -> "Shizuku يعمل — بدون ADB"
+                        adbReady -> "متصل عبر Shizuku"
                         else -> "غير متصل"
                     },
                     color = Color(0xE6FFFFFF),
@@ -633,14 +633,14 @@ private fun ShizukuBanner() {
     ) {
         Column(Modifier.padding(14.dp)) {
             Text(
-                "الصلاحيات عبر Shizuku",
+                "متصل عبر Shizuku",
                 color = AccentGreen,
                 fontWeight = FontWeight.Bold,
                 fontSize = 16.sp
             )
             Text(
-                "Shizuku يعمل — أوامر التعطيل/التفعيل/مسح الكاش/الحذف متاحة بدون ADB. " +
-                    "الشريط يعرض SZK بدل ADB.",
+                "الأوامر تعمل الآن: تعطيل/تفعيل/مسح كاش/حذف — بدون ADB. " +
+                    "الشارة تعرض SZK عند استخدام Shizuku.",
                 color = TextMuted,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(top = 4.dp)
