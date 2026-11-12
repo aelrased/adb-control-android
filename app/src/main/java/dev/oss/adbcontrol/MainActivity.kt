@@ -525,51 +525,74 @@ private fun TvRail(
     onScreen: (String) -> Unit,
     onSearch: () -> Unit
 ) {
-    data class Item(val label: String, val icon: ImageVector, val active: Boolean, val onClick: () -> Unit)
+    var moreOpen by remember { mutableStateOf(false) }
 
-    val items = listOf(
-        Item("Library", Icons.Outlined.LibraryBooks, screen == "library") { onScreen("library") },
-        Item("Settings", Icons.Outlined.Settings, screen == "settings") { onScreen("settings") },
-        Item("All", Icons.Outlined.Apps, screen == "apps" && filter == AppFilter.ALL) { onFilter(AppFilter.ALL) },
-        Item("User", Icons.Outlined.Person, screen == "apps" && filter == AppFilter.USER) { onFilter(AppFilter.USER) },
-        Item("System", Icons.Outlined.PhoneAndroid, screen == "apps" && filter == AppFilter.SYSTEM) { onFilter(AppFilter.SYSTEM) },
-        Item("Disabled", Icons.Outlined.Block, screen == "apps" && filter == AppFilter.DISABLED) { onFilter(AppFilter.DISABLED) },
-        Item("Enabled", Icons.Outlined.CheckCircle, screen == "apps" && filter == AppFilter.ENABLED) { onFilter(AppFilter.ENABLED) },
-        Item("Search", Icons.Outlined.Search, false) { onSearch() },
-        Item("Shell", Icons.Outlined.Terminal, screen == "shell") { onScreen("shell") },
-        Item("Removed", Icons.Outlined.Restore, screen == "removed") { onScreen("removed") },
-        Item("CleanTV", Icons.Outlined.CleaningServices, screen == "clean") { onScreen("clean") },
-        Item("Apps", Icons.Outlined.Apps, screen == "apps") { onScreen("apps") }
-    )
+    Row(Modifier.fillMaxHeight()) {
+        Column(
+            Modifier
+                .width(140.dp)
+                .fillMaxHeight()
+                .background(Color(0xFF0C1016))
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 8.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                "ADB Control",
+                color = AccentGreen,
+                fontWeight = FontWeight.Bold,
+                fontSize = 11.sp,
+                modifier = Modifier.padding(bottom = 2.dp)
+            )
+            TvRailItem("All", Icons.Outlined.Apps, screen == "apps" && filter == AppFilter.ALL) {
+                onFilter(AppFilter.ALL)
+            }
+            TvRailItem("Search", Icons.Outlined.Search, false) { onSearch() }
+            TvRailItem(
+                if (moreOpen) "Less" else "More",
+                Icons.Outlined.MoreVert,
+                moreOpen
+            ) { moreOpen = !moreOpen }
+            TvRailItem("Shell", Icons.Outlined.Terminal, screen == "shell") { onScreen("shell") }
+            TvRailItem("Removed", Icons.Outlined.Restore, screen == "removed") { onScreen("removed") }
+            TvRailItem("CleanTV", Icons.Outlined.CleaningServices, screen == "clean") { onScreen("clean") }
+            TvRailItem("Library", Icons.Outlined.LibraryBooks, screen == "library") { onScreen("library") }
+            TvRailItem("Settings", Icons.Outlined.Settings, screen == "settings") { onScreen("settings") }
+        }
 
-    Column(
-        Modifier
-            .width(230.dp)
-            .fillMaxHeight()
-            .background(Color(0xFF0C1016))
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 8.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            "ADB Control",
-            color = AccentGreen,
-            fontWeight = FontWeight.Bold,
-            fontSize = 12.sp,
-            modifier = Modifier.padding(bottom = 2.dp)
-        )
-        items.chunked(2).forEach { rowItems ->
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+        if (moreOpen) {
+            Column(
+                Modifier
+                    .width(140.dp)
+                    .fillMaxHeight()
+                    .background(Color(0xFF111722))
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                rowItems.forEach { item ->
-                    Box(Modifier.weight(1f)) {
-                        TvRailItem(item.label, item.icon, item.active, item.onClick)
-                    }
+                Text(
+                    "Filters",
+                    color = TextMuted,
+                    fontSize = 10.sp,
+                    modifier = Modifier.padding(bottom = 2.dp)
+                )
+                TvRailItem("All apps", Icons.Outlined.Apps, screen == "apps" && filter == AppFilter.ALL) {
+                    onFilter(AppFilter.ALL)
                 }
-                if (rowItems.size == 1) Spacer(Modifier.weight(1f))
+                TvRailItem("User", Icons.Outlined.Person, screen == "apps" && filter == AppFilter.USER) {
+                    onFilter(AppFilter.USER)
+                }
+                TvRailItem("System", Icons.Outlined.PhoneAndroid, screen == "apps" && filter == AppFilter.SYSTEM) {
+                    onFilter(AppFilter.SYSTEM)
+                }
+                TvRailItem("Disabled", Icons.Outlined.Block, screen == "apps" && filter == AppFilter.DISABLED) {
+                    onFilter(AppFilter.DISABLED)
+                }
+                TvRailItem("Enabled", Icons.Outlined.CheckCircle, screen == "apps" && filter == AppFilter.ENABLED) {
+                    onFilter(AppFilter.ENABLED)
+                }
             }
         }
     }
