@@ -557,9 +557,9 @@ private fun AppList(
         contentPadding = PaddingValues(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        if (!adb.connected) {
+        if (!adb.connected && !adb.shizukuReady) {
             item {
-                if (adb.shizukuReady) ShizukuBanner() else ConnectBanner(adb = adb, onConnect = onConnect)
+                ConnectBanner(adb = adb, onConnect = onConnect)
             }
         } else if (needsRemoteIcons) {
             item {
