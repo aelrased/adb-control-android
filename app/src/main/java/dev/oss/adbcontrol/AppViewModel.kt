@@ -25,6 +25,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repo = AppsRepository(application)
     private val cyt = CytRepository(application)
+    private val uad = UadRepository(application)
     private val adb = AdbManager(application)
     private val prefs = application.getSharedPreferences("settings", Context.MODE_PRIVATE)
 
@@ -191,6 +192,39 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             }
             emit("تم تنفيذ الإجراء على $done/${packages.size}")
             clearSelection()
+            reloadApps()
+        }
+    }
+
+    suspend fun uadInfo(pkg: String): UadInfo? = uad.info(pkg)
+
+    /** Packages uninstalled for user 0 but still present on the device (restorable). */
+    suspend fun removedPackages(): List<String> {
+        // Use --user 0: plain "pm list packages" still lists packages removed for this user.
+        val all = adb.shell("pm list packages -u --user 0") ?: return emptyList()
+        val installed = adb.shell("pm list packages --user 0") ?: return emptyList()
+        val installedSet = installed.lineSequence()
+            .mapNotNull { it.trim().removePrefix("package:").takeIf { p -> p.isNotEmpty() } }
+            .toSet()
+        return all.lineSequence()
+            .mapNotNull { it.trim().removePrefix("package:").takeIf { p -> p.isNotEmpty() } }
+            .filter { it !in installedSet }
+            .distinct()
+            .sorted()
+            .toList()
+    }
+
+    fun restorePackage(pkg: String) {
+        viewModelScope.launch {
+            val out = adb.shell("pm install-existing --user 0 $pkg")
+            if (out == null) {
+                emit("الاستعادة تحتاج ADB أو Shizuku")
+                return@launch
+            }
+            emit(
+                if (out.contains("Success") || out.contains("installed for user")) "تمت استعادة $pkg"
+                else "فشل: ${out.trim().take(160)}"
+            )
             reloadApps()
         }
     }

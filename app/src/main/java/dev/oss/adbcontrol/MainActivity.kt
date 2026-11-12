@@ -57,6 +57,7 @@ import androidx.compose.material.icons.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material.icons.outlined.SaveAlt
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
@@ -157,6 +158,7 @@ private fun Root(vm: AppViewModel) {
     var screen by rememberSaveable { mutableStateOf("apps") }
     var showSearch by remember { mutableStateOf(false) }
     var actionsApp by remember { mutableStateOf<AppEntry?>(null) }
+    var actionsUad by remember { mutableStateOf<UadInfo?>(null) }
     var showPairing by remember { mutableStateOf(false) }
     var showAddDevice by remember { mutableStateOf(false) }
 
@@ -247,6 +249,7 @@ private fun Root(vm: AppViewModel) {
                 when (screen) {
                     "settings" -> SettingsScreen(vm)
                     "clean" -> CleanScreen(vm)
+                    "removed" -> RemovedScreen(vm)
                     "library" -> LibraryScreen(
                         vm = vm,
                         onInstall = { installLauncher.launch(arrayOf("*/*")) }
@@ -298,10 +301,14 @@ private fun Root(vm: AppViewModel) {
         )
     }
 
+    LaunchedEffect(actionsApp) {
+        actionsUad = actionsApp?.let { vm.uadInfo(it.packageName) }
+    }
     actionsApp?.let { app ->
         ActionsSheet(
             app = app,
             adbConnected = adb.connected || adb.shizukuReady,
+            uad = actionsUad,
             onDismiss = { actionsApp = null },
             onAction = { action ->
                 vm.perform(action, app)
@@ -774,6 +781,7 @@ private fun AppIcon(app: AppEntry) {
 private fun ActionsSheet(
     app: AppEntry,
     adbConnected: Boolean,
+    uad: UadInfo?,
     onDismiss: () -> Unit,
     onAction: (AppAction) -> Unit
 ) {
@@ -785,6 +793,13 @@ private fun ActionsSheet(
                 Column {
                     Text(app.label, color = TextMain, fontWeight = FontWeight.Bold, fontSize = 17.sp)
                     Text(app.packageName, color = TextMuted, fontSize = 12.sp)
+                    uad?.let {
+                        Text(
+                            "UDADB: ${it.arabicLabel}",
+                            color = if (it.isUnsafe) Danger else TextMuted,
+                            fontSize = 10.5.sp
+                        )
+                    }
                 }
             }
             Spacer(Modifier.height(12.dp))
@@ -1124,6 +1139,81 @@ private fun CleanScreen(vm: AppViewModel) {
 }
 
 @Composable
+private fun RemovedScreen(vm: AppViewModel) {
+    var packages by remember { mutableStateOf<List<String>>(emptyList()) }
+    var infos by remember { mutableStateOf<Map<String, UadInfo>>(emptyMap()) }
+    var loading by remember { mutableStateOf(true) }
+    var refreshKey by remember { mutableStateOf(0) }
+
+    LaunchedEffect(refreshKey) {
+        loading = true
+        packages = vm.removedPackages()
+        infos = packages.mapNotNull { p -> vm.uadInfo(p)?.let { p to it } }.toMap()
+        loading = false
+    }
+
+    Column(Modifier.fillMaxSize().padding(16.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "المحذوفة (للمستخدم 0)",
+                color = TextMain,
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp,
+                modifier = Modifier.weight(1f)
+            )
+            IconButton(onClick = { refreshKey++ }) {
+                Icon(Icons.Outlined.Refresh, contentDescription = "Refresh", tint = TextMuted)
+            }
+        }
+        Text(
+            "${packages.size} تطبيق محذوف — اضغط «استعادة» لإرجاعه دون إنترنت أو نسخة احتياطية.",
+            color = TextMuted,
+            fontSize = 11.5.sp
+        )
+        Spacer(Modifier.height(8.dp))
+        if (loading) {
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = AccentGreen, trackColor = Bg)
+        }
+        LazyColumn(Modifier.fillMaxWidth().weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            items(packages, key = { it }) { pkg ->
+                Surface(
+                    color = CardBg,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                pkg,
+                                color = TextMain,
+                                fontSize = 12.5.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            infos[pkg]?.let {
+                                Text(
+                                    "UDADB: ${it.arabicLabel}",
+                                    color = if (it.isUnsafe) Danger else TextMuted,
+                                    fontSize = 10.sp,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                        Button(
+                            onClick = { vm.restorePackage(pkg) },
+                            colors = ButtonDefaults.buttonColors(containerColor = AccentGreen)
+                        ) { Text("استعادة") }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun SettingsScreen(vm: AppViewModel) {
     val context = LocalContext.current
     val adb by vm.adbState.collectAsStateWithLifecycle()
@@ -1419,6 +1509,7 @@ private fun DrawerContent(
             }
             DrawerItem(Icons.Outlined.Sync, "Sync remote data") { onSyncRemote() }
             DrawerItem(Icons.Outlined.CleaningServices, "CleanYourTV") { onNavigate("clean") }
+            DrawerItem(Icons.Outlined.Restore, "المحذوفة (استعادة)") { onNavigate("removed") }
             DrawerItem(Icons.Outlined.Add, "Add network device") { onAddDevice() }
             DrawerItem(Icons.Outlined.PhoneAndroid, "Connect over ADB") { onConnectSelf() }
 
