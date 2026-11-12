@@ -55,8 +55,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun isRemote(): Boolean {
-        val active = adb.state.value.active
-        return active != null && !active.isSelf
+        val active = adb.state.value.active ?: return false
+        // A saved network device is "remote" only while it is actually connected;
+        // otherwise list this phone's own apps instead of showing an empty list.
+        return !active.isSelf && adb.state.value.connected
     }
 
     private fun remoteBridgeDir(): File? {
@@ -128,17 +130,36 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             if (kind == "clear_cache") {
                 val sdk = adb.shell("getprop ro.build.version.sdk")?.trim()?.toIntOrNull() ?: 0
                 if (sdk < 30) {
-                    val out = adb.shell("pm trim-caches 999999999999")
                     emit(
-                        if (out != null) "تم تنظيف كاش جميع التطبيقات (Android ${sdk} لا يدعم لكل تطبيق)"
+                        if (trimCaches()) "تم تنظيف كاش جميع التطبيقات (Android ${sdk} لا يدعم لكل تطبيق)"
                         else "فشل التنظيف"
                     )
-                } else {
-                    var cleared = 0
-                    packages.forEach { pkg ->
-                        val out = adb.shell("pm clear --cache-only --user 0 $pkg")
-                        if (out != null && !out.contains("Failed") && !out.contains("Failure")) cleared++
+                    clearSelection()
+                    reloadApps()
+                    return@launch
+                }
+                var cleared = 0
+                var unsupported = false
+                for (pkg in packages) {
+                    val out = adb.shell("timeout 8 pm clear --cache-only --user 0 $pkg; echo RC=\$?") ?: ""
+                    when {
+                        out.contains("Success") -> cleared++
+                        out.contains("RC=124") || out.isBlank() -> {
+                            unsupported = true
+                            break
+                        }
+                        else -> Unit
                     }
+                }
+                if (unsupported || cleared == 0) {
+                    emit(
+                        if (trimCaches()) {
+                            "هذا الجهاز لا يسمح بمسح كاش كل تطبيق — تم تنظيف كاش النظام بالكامل"
+                        } else {
+                            "فشل مسح الكاش على هذا الجهاز"
+                        }
+                    )
+                } else {
                     emit("تم مسح كاش $cleared/${packages.size}")
                 }
                 clearSelection()
@@ -660,23 +681,46 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun clearCache(pkg: String, label: String) {
-        val command = "sdk=$(getprop ro.build.version.sdk); " +
-            "if [ \"\$sdk\" -ge 30 ]; then pm clear --cache-only --user 0 $pkg; " +
-            "else pm trim-caches 999999999999; echo TRIM_ALL; fi"
-        val output = adb.shell(command)
-        if (output == null) {
-            emit("هذا الإجراء يحتاج اتصال ADB")
+        val sdk = adb.shell("getprop ro.build.version.sdk")?.trim()?.toIntOrNull() ?: 0
+        if (sdk >= 30) {
+            // Some vendors (e.g. Samsung) block --cache-only and the call hangs silently.
+            val out = adb.shell("timeout 8 pm clear --cache-only --user 0 $pkg; echo RC=\$?")
+            if (out != null && out.contains("Success")) {
+                emit("تم مسح كاش $label")
+                delay(300)
+                reloadApps()
+                return
+            }
+            val unsupported = out != null && (out.contains("RC=124") || out.isBlank())
+            if (unsupported) {
+                emit(
+                    if (trimCaches()) {
+                        "هذا الجهاز لا يسمح بمسح كاش تطبيق واحد — تم تنظيف كاش النظام بالكامل. " +
+                            "لمسح بيانات $label استخدم «Clear data»"
+                    } else {
+                        "هذا الجهاز لا يسمح بمسح الكاش (صلاحية النظام مطلوبة). استخدم «Clear data»"
+                    }
+                )
+                reloadApps()
+                return
+            }
+            emit("فشل مسح الكاش: ${out?.trim()?.take(140) ?: "لا استجابة"}")
             return
         }
-        if (output.contains("TRIM_ALL")) {
-            emit("تم تنظيف كاش جميع التطبيقات (مسح كاش تطبيق واحد متاح من Android 11+)")
-        } else if (output.contains("Failed") || output.contains("Failure") || output.contains("Exception")) {
-            emit("فشل مسح الكاش: ${output.trim()}")
-        } else {
-            emit("تم مسح كاش $label")
-        }
-        delay(300)
+        emit(
+            if (trimCaches()) "تم تنظيف كاش جميع التطبيقات (مسح كاش تطبيق واحد متاح من Android 11+)"
+            else "فشل تنظيف الكاش"
+        )
         reloadApps()
+    }
+
+    /** Frees app caches globally (works even when per-app clearing is blocked). */
+    private suspend fun trimCaches(megabytes: Long = 1024): Boolean {
+        val df = adb.shell("df -k /data | tail -1") ?: return false
+        val freeKb = df.split(Regex("\\s+")).getOrNull(3)?.toLongOrNull() ?: return false
+        val target = freeKb + megabytes * 1024
+        val out = adb.shell("timeout 30 pm trim-caches $target; echo RC=\$?")
+        return out != null && out.contains("RC=0")
     }
 
     private suspend fun shellAction(command: String, success: String) {
