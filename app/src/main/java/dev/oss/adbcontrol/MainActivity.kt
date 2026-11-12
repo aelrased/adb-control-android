@@ -3,6 +3,7 @@ package dev.oss.adbcontrol
 import android.content.Intent
 import android.net.Uri
 import android.Manifest
+import android.content.res.Configuration
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -16,6 +17,8 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.border
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
@@ -107,11 +110,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
@@ -157,6 +162,11 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun Root(vm: AppViewModel) {
     val context = LocalContext.current
+    val isTv = remember {
+        val mode = context.resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK
+        mode == Configuration.UI_MODE_TYPE_TELEVISION ||
+            context.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
+    }
     val apps by vm.apps.collectAsStateWithLifecycle()
     val adb by vm.adbState.collectAsStateWithLifecycle()
     val query by vm.query.collectAsStateWithLifecycle()
@@ -233,7 +243,9 @@ private fun Root(vm: AppViewModel) {
                 }
             },
             bottomBar = {
-                if (selection.isNotEmpty()) {
+                if (isTv) {
+                    // TV: navigation lives in the left rail.
+                } else if (selection.isNotEmpty()) {
                     SelectionBar(
                         count = selection.size,
                         onClose = { vm.clearSelection() },
@@ -260,7 +272,23 @@ private fun Root(vm: AppViewModel) {
                 }
             }
         ) { padding ->
-            Box(Modifier.padding(padding).fillMaxSize().background(Bg)) {
+            Row(Modifier.padding(padding).fillMaxSize().background(Bg)) {
+                if (isTv) {
+                    TvRail(
+                        filter = filter,
+                        screen = screen,
+                        onFilter = {
+                            vm.filter.value = it
+                            screen = "apps"
+                        },
+                        onScreen = { screen = it },
+                        onSearch = {
+                            screen = "apps"
+                            showSearch = !showSearch
+                        }
+                    )
+                }
+                Box(Modifier.weight(1f).fillMaxHeight().background(Bg)) {
                 when (screen) {
                     "settings" -> SettingsScreen(vm)
                     "clean" -> CleanScreen(vm)
@@ -284,6 +312,7 @@ private fun Root(vm: AppViewModel) {
                         onToggle = { vm.toggleSelection(it) },
                         onLongPress = { vm.beginSelection(it) }
                     )
+                }
                 }
             }
         }
@@ -483,6 +512,100 @@ private fun Header(
                     focusedIndicatorColor = Color.White.copy(alpha = 0.7f),
                     unfocusedIndicatorColor = Color.White.copy(alpha = 0.4f)
                 )
+            )
+        }
+    }
+}
+
+@Composable
+private fun TvRail(
+    filter: AppFilter,
+    screen: String,
+    onFilter: (AppFilter) -> Unit,
+    onScreen: (String) -> Unit,
+    onSearch: () -> Unit
+) {
+    data class Item(val label: String, val icon: ImageVector, val active: Boolean, val onClick: () -> Unit)
+
+    val items = listOf(
+        Item("Library", Icons.Outlined.LibraryBooks, screen == "library") { onScreen("library") },
+        Item("Settings", Icons.Outlined.Settings, screen == "settings") { onScreen("settings") },
+        Item("All", Icons.Outlined.Apps, screen == "apps" && filter == AppFilter.ALL) { onFilter(AppFilter.ALL) },
+        Item("User", Icons.Outlined.Person, screen == "apps" && filter == AppFilter.USER) { onFilter(AppFilter.USER) },
+        Item("System", Icons.Outlined.PhoneAndroid, screen == "apps" && filter == AppFilter.SYSTEM) { onFilter(AppFilter.SYSTEM) },
+        Item("Disabled", Icons.Outlined.Block, screen == "apps" && filter == AppFilter.DISABLED) { onFilter(AppFilter.DISABLED) },
+        Item("Enabled", Icons.Outlined.CheckCircle, screen == "apps" && filter == AppFilter.ENABLED) { onFilter(AppFilter.ENABLED) },
+        Item("Search", Icons.Outlined.Search, false) { onSearch() },
+        Item("Shell", Icons.Outlined.Terminal, screen == "shell") { onScreen("shell") },
+        Item("Removed", Icons.Outlined.Restore, screen == "removed") { onScreen("removed") },
+        Item("CleanTV", Icons.Outlined.CleaningServices, screen == "clean") { onScreen("clean") },
+        Item("Apps", Icons.Outlined.Apps, screen == "apps") { onScreen("apps") }
+    )
+
+    Column(
+        Modifier
+            .width(230.dp)
+            .fillMaxHeight()
+            .background(Color(0xFF0C1016))
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 8.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            "ADB Control",
+            color = AccentGreen,
+            fontWeight = FontWeight.Bold,
+            fontSize = 12.sp,
+            modifier = Modifier.padding(bottom = 2.dp)
+        )
+        items.chunked(2).forEach { rowItems ->
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                rowItems.forEach { item ->
+                    Box(Modifier.weight(1f)) {
+                        TvRailItem(item.label, item.icon, item.active, item.onClick)
+                    }
+                }
+                if (rowItems.size == 1) Spacer(Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun TvRailItem(label: String, icon: ImageVector, active: Boolean, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    Surface(
+        color = if (active) AccentGreen.copy(alpha = 0.22f) else Color.Transparent,
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier
+            .fillMaxWidth(0.9f)
+            .onFocusChanged { focused = it.isFocused }
+            .border(
+                if (focused) 2.dp else 0.dp,
+                if (focused) AccentGreen else Color.Transparent,
+                RoundedCornerShape(12.dp)
+            )
+            .clickable(onClick = onClick)
+    ) {
+        Column(
+            Modifier.padding(vertical = 6.dp).fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Icon(
+                icon,
+                contentDescription = label,
+                tint = if (active || focused) AccentGreen else TextMuted,
+                modifier = Modifier.size(22.dp)
+            )
+            Text(
+                label,
+                color = if (active) AccentGreen else TextMain,
+                fontSize = 10.5.sp,
+                maxLines = 1
             )
         }
     }
@@ -748,13 +871,22 @@ private fun AppRow(
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
+    var focused by remember { mutableStateOf(false) }
     Surface(
         color = if (selected) Color(0xFF16233A) else CardBg,
         shape = RoundedCornerShape(14.dp),
-        modifier = Modifier.fillMaxWidth().combinedClickable(
-            onClick = onClick,
-            onLongClick = onLongClick
-        )
+        modifier = Modifier
+            .fillMaxWidth()
+            .onFocusChanged { focused = it.isFocused }
+            .border(
+                if (focused) 2.dp else 0.dp,
+                if (focused) AccentGreen else Color.Transparent,
+                RoundedCornerShape(14.dp)
+            )
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(12.dp)) {
             if (selectionMode) {
