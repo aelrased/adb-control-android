@@ -12,6 +12,11 @@ class App : Application() {
         super.onCreate()
         // Android 9 needs this so parsed RSA keys keep their CRT parameters.
         RsaCrtFix.install()
+        // Apply the saved UI language before any screen composes (keeps layout direction correct).
+        runCatching {
+            val prefs = getSharedPreferences("settings", MODE_PRIVATE)
+            L10n.set(prefs.getString("lang", "ar") ?: "ar")
+        }
         // Persist the ADB host identity so pairing survives app restarts.
         val keyFile = File(filesDir, "adbkey.pem")
         // Key generation can take seconds on slow TV boxes; never block the main thread.

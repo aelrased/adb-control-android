@@ -47,6 +47,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val _toast = MutableSharedFlow<String>(extraBufferCapacity = 16)
     val toast = _toast
 
+    init {
+        L10n.set(prefs.getString("lang", "ar") ?: "ar")
+    }
+
     val apkFolder: File
         get() = getApplication<Application>().getExternalFilesDir(null)
             ?: getApplication<Application>().filesDir
@@ -937,8 +941,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private suspend fun emit(message: String) {
-        _toast.emit(message)
+        _toast.emit(L10n.t(message))
     }
+
+    fun setLanguage(code: String) {
+        prefs.edit().putString("lang", code).apply()
+        L10n.set(code)
+    }
+
+    fun currentLanguage(): String = prefs.getString("lang", "ar") ?: "ar"
 
     override fun onCleared() {
         adb.close()

@@ -93,6 +93,7 @@ import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -107,6 +108,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -114,6 +116,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.text.KeyboardOptions
@@ -135,7 +138,12 @@ class MainActivity : ComponentActivity() {
             requestPermissions(arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE), 1)
         }
         setContent {
-            OpenAdbTheme { Root(vm) }
+            val english = L10n.current.value == "en"
+            CompositionLocalProvider(
+                LocalLayoutDirection provides if (english) LayoutDirection.Ltr else LayoutDirection.Rtl
+            ) {
+                OpenAdbTheme { Root(vm) }
+            }
         }
     }
 }
@@ -325,22 +333,22 @@ private fun Root(vm: AppViewModel) {
     pendingDeep?.let { app ->
         AlertDialog(
             onDismissRequest = { pendingDeep = null },
-            title = { Text("⚠️ حذف نهائي — لا يمكن التراجع") },
+            title = { Text(L10n.t("⚠️ حذف نهائي — لا يمكن التراجع")) },
             text = {
                 Text(
                     "سيُحاول التطبيق إزالة تحديثات النظام ثم حذف «${app.label}» نهائياً من المستخدم 0.\n\n" +
                         "قد يسبب توقف النظام أو فقدان ميزات. لا توجد استعادة بعد هذا الإجراء.\n\n" +
-                        "هل أنت متأكد؟"
+                        L10n.t("هل أنت متأكد؟")
                 )
             },
             confirmButton = {
                 TextButton(onClick = {
                     vm.deepUninstall(app.packageName)
                     pendingDeep = null
-                }) { Text("حذف نهائي", color = Danger, fontWeight = FontWeight.Bold) }
+                }) { Text(L10n.t("حذف نهائي"), color = Danger, fontWeight = FontWeight.Bold) }
             },
             dismissButton = {
-                TextButton(onClick = { pendingDeep = null }) { Text("إلغاء") }
+                TextButton(onClick = { pendingDeep = null }) { Text(L10n.t("إلغاء")) }
             }
         )
     }
@@ -350,8 +358,8 @@ private fun Root(vm: AppViewModel) {
             onDismissRequest = { pendingBulk = null },
             title = {
                 Text(
-                    if (kind == "uninstall") "حذف التطبيقات المحددة؟"
-                    else "مسح بيانات التطبيقات المحددة؟"
+                    if (kind == "uninstall") L10n.t("حذف التطبيقات المحددة؟")
+                    else L10n.t("مسح بيانات التطبيقات المحددة؟")
                 )
             },
             text = { Text("عدد التطبيقات: ${selection.size}. لا يمكن التراجع.") },
@@ -359,10 +367,10 @@ private fun Root(vm: AppViewModel) {
                 TextButton(onClick = {
                     if (kind == "uninstall") vm.bulkUninstall() else vm.bulkClear()
                     pendingBulk = null
-                }) { Text("تأكيد") }
+                }) { Text(L10n.t("تأكيد")) }
             },
             dismissButton = {
-                TextButton(onClick = { pendingBulk = null }) { Text("إلغاء") }
+                TextButton(onClick = { pendingBulk = null }) { Text(L10n.t("إلغاء")) }
             }
         )
     }
@@ -427,8 +435,8 @@ private fun Header(
                 Text(
                     when {
                         serial.isNotEmpty() -> serial
-                        adbReady -> "متصل عبر Shizuku"
-                        else -> "غير متصل"
+                        adbReady -> L10n.t("متصل عبر Shizuku")
+                        else -> L10n.t("غير متصل")
                     },
                     color = Color(0xE6FFFFFF),
                     fontSize = 10.5.sp,
@@ -620,7 +628,7 @@ private fun SelectionBar(
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.weight(1f)
                 )
-                TextButton(onClick = onSelectAll) { Text("الكل") }
+                TextButton(onClick = onSelectAll) { Text(L10n.t("الكل")) }
             }
             Row(
                 Modifier
@@ -629,12 +637,12 @@ private fun SelectionBar(
                     .padding(horizontal = 8.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                BarAction("تعطيل", Icons.Outlined.Block, onDisable)
-                BarAction("تفعيل", Icons.Outlined.CheckCircle, onEnable)
-                BarAction("نسخة احتياطية", Icons.Outlined.SaveAlt, onBackup)
-                BarAction("مسح الكاش", Icons.Outlined.CleaningServices, onClearCache)
-                BarAction("مسح البيانات", Icons.Outlined.DeleteSweep, onClear)
-                BarAction("حذف", Icons.Outlined.Delete, onUninstall, danger = true)
+                BarAction(L10n.t("تعطيل"), Icons.Outlined.Block, onDisable)
+                BarAction(L10n.t("تفعيل"), Icons.Outlined.CheckCircle, onEnable)
+                BarAction(L10n.t("نسخة احتياطية"), Icons.Outlined.SaveAlt, onBackup)
+                BarAction(L10n.t("مسح الكاش"), Icons.Outlined.CleaningServices, onClearCache)
+                BarAction(L10n.t("مسح البيانات"), Icons.Outlined.DeleteSweep, onClear)
+                BarAction(L10n.t("حذف"), Icons.Outlined.Delete, onUninstall, danger = true)
             }
         }
     }
@@ -668,7 +676,7 @@ private fun ShizukuBanner() {
     ) {
         Column(Modifier.padding(14.dp)) {
             Text(
-                "متصل عبر Shizuku",
+                L10n.t("متصل عبر Shizuku"),
                 color = AccentGreen,
                 fontWeight = FontWeight.Bold,
                 fontSize = 16.sp
@@ -688,7 +696,7 @@ private fun ShizukuBanner() {
 private fun ConnectBanner(adb: AdbUiState, onConnect: () -> Unit) {
     Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF1B2A22))) {
         Column(Modifier.padding(14.dp)) {
-            Text("ADB غير متصل", color = Color(0xFF8CE0AE), fontWeight = FontWeight.Bold)
+            Text(L10n.t("ADB غير متصل"), color = Color(0xFF8CE0AE), fontWeight = FontWeight.Bold)
             Text(
                 "فعّل Wireless debugging ثم اضغط Connect لمنح التطبيق صلاحية shell لإدارة التطبيقات.",
                 color = TextMuted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp)
@@ -708,7 +716,7 @@ private fun RemoteIconsBanner(label: String, onSync: () -> Unit) {
     Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF16233A))) {
         Column(Modifier.padding(14.dp)) {
             Text(
-                "أيقونات وأسماء الجهاز البعيد",
+                L10n.t("أيقونات وأسماء الجهاز البعيد"),
                 color = Color(0xFF9DC1FF),
                 fontWeight = FontWeight.Bold
             )
@@ -719,7 +727,7 @@ private fun RemoteIconsBanner(label: String, onSync: () -> Unit) {
                 modifier = Modifier.padding(top = 4.dp)
             )
             Button(onClick = onSync, modifier = Modifier.padding(top = 8.dp)) {
-                Text("تحميل الأيقونات")
+                Text(L10n.t("تحميل الأيقونات"))
             }
         }
     }
@@ -844,10 +852,10 @@ private fun ActionsSheet(
             ActionItem("Uninstall (عادي — قابل للاستعادة)", Icons.Outlined.Delete, danger = true) {
                 onAction(AppAction.UNINSTALL)
             }
-            ActionItem("استعادة (Install existing)", Icons.Outlined.Restore) {
+            ActionItem(L10n.t("استعادة (Install existing)"), Icons.Outlined.Restore) {
                 onAction(AppAction.RESTORE)
             }
-            ActionItem("حذف نهائي (نسخة المصنع)", Icons.Outlined.DeleteForever, danger = true) {
+            ActionItem(L10n.t("حذف نهائي (نسخة المصنع)"), Icons.Outlined.DeleteForever, danger = true) {
                 onAction(AppAction.UNINSTALL_DEEP)
             }
             if (!adbConnected) {
@@ -946,13 +954,13 @@ private fun PairingDialog(
                         color = if (adb.pairingEndpoint != null) AccentGreen else Color(0xFFFFCF70)
                     )
                     Text(
-                        "منفذ الاتصال (Connect): " + (adb.connectEndpoint?.let { "${it.host}:${it.port}" } ?: "غير متاح"),
+                        "منفذ الاتصال (Connect): " + (adb.connectEndpoint?.let { "${it.host}:${it.port}" } ?: L10n.t("غير متاح")),
                         fontSize = 12.sp,
                         color = TextMuted
                     )
 
                     HorizontalDivider(color = Divider, modifier = Modifier.padding(vertical = 8.dp))
-                    Text("إدخال يدوي", color = TextMain, fontWeight = FontWeight.SemiBold, fontSize = 12.5.sp)
+                    Text(L10n.t("إدخال يدوي"), color = TextMain, fontWeight = FontWeight.SemiBold, fontSize = 12.5.sp)
                     Text(
                         "انسخ الأرقام من شاشة Wireless debugging: منفذ الاقتران من نافذة «Pair with device»، " +
                             "ومنفذ Connect من الشاشة الرئيسية تحت مفتاح On.",
@@ -1039,12 +1047,12 @@ private fun PairingDialog(
                     TextButton(
                         onClick = onStart,
                         modifier = Modifier.fillMaxWidth()
-                    ) { Text("إعادة البحث عن منفذ الاقتران") }
+                    ) { Text(L10n.t("إعادة البحث عن منفذ الاقتران")) }
 
                     HorizontalDivider(color = Divider, modifier = Modifier.padding(vertical = 8.dp))
 
                     TextButton(onClick = onLocal, modifier = Modifier.fillMaxWidth()) {
-                        Text("استخدام هذا الجهاز (IP الواي فاي تلقائياً)")
+                        Text(L10n.t("استخدام هذا الجهاز (IP الواي فاي تلقائياً)"))
                     }
                     Text(
                         "يُكتشف عنوان IP للواي فاي تلقائياً ثم يتصل بالمنفذ 5555، مع محاولة 127.0.0.1 كبديل. " +
@@ -1095,7 +1103,7 @@ private fun CleanScreen(vm: AppViewModel) {
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Text("CleanYourTV", color = TextMain, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-        Text("الجهاز: ${adb.active?.label ?: "غير متصل"}", color = TextMuted, fontSize = 12.sp)
+        Text("الجهاز: ${adb.active?.label ?: L10n.t("غير متصل")}", color = TextMuted, fontSize = 12.sp)
         if (matched != null) {
             val name = profiles.firstOrNull { it.id == matched }?.title ?: matched
             Text("تمت مطابقة ملف: $name", color = AccentGreen, fontSize = 12.sp)
@@ -1104,7 +1112,7 @@ private fun CleanScreen(vm: AppViewModel) {
         OutlinedTextField(
             value = query,
             onValueChange = { query = it },
-            label = { Text("ابحث عن موديل التلفزيون") },
+            label = { Text(L10n.t("ابحث عن موديل التلفزيون")) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
@@ -1117,17 +1125,17 @@ private fun CleanScreen(vm: AppViewModel) {
 
         Card(colors = CardDefaults.cardColors(containerColor = CardBg)) {
             Column(Modifier.padding(12.dp)) {
-                Text(current?.title ?: "اختر ملفاً", color = TextMain, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                Text(current?.title ?: L10n.t("اختر ملفاً"), color = TextMain, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                 Text("$count حزمة قابلة للتعطيل", color = TextMuted, fontSize = 12.sp)
                 Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(
                         onClick = { selected?.let { vm.applyDebloat(it, false) } },
                         enabled = selected != null && (adb.connected || adb.shizukuReady)
-                    ) { Text("تعطيل") }
+                    ) { Text(L10n.t("تعطيل")) }
                     OutlinedButton(
                         onClick = { selected?.let { vm.applyDebloat(it, true) } },
                         enabled = selected != null && (adb.connected || adb.shizukuReady)
-                    ) { Text("استعادة") }
+                    ) { Text(L10n.t("استعادة")) }
                 }
                 Text(
                     "تعطيل فقط عبر pm disable-user وليس حذفاً. استخدم «استعادة» للتراجع.",
@@ -1136,7 +1144,7 @@ private fun CleanScreen(vm: AppViewModel) {
                     modifier = Modifier.padding(top = 4.dp)
                 )
                 if (!adb.connected && !adb.shizukuReady) {
-                    Text("يتطلب ADB أو Shizuku", color = Danger, fontSize = 11.sp)
+                    Text(L10n.t("يتطلب ADB أو Shizuku"), color = Danger, fontSize = 11.sp)
                 }
             }
         }
@@ -1191,7 +1199,7 @@ private fun RemovedScreen(vm: AppViewModel) {
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                "المحذوفة (للمستخدم 0)",
+                L10n.t("المحذوفة (للمستخدم 0)"),
                 color = TextMain,
                 fontWeight = FontWeight.Bold,
                 fontSize = 18.sp,
@@ -1241,7 +1249,7 @@ private fun RemovedScreen(vm: AppViewModel) {
                         Button(
                             onClick = { vm.restorePackage(pkg) },
                             colors = ButtonDefaults.buttonColors(containerColor = AccentGreen)
-                        ) { Text("استعادة") }
+                        ) { Text(L10n.t("استعادة")) }
                     }
                 }
             }
@@ -1270,7 +1278,7 @@ private fun SettingsScreen(vm: AppViewModel) {
         SectionTitle("Common")
         SwitchRow(
             title = "Apps monitoring",
-            subtitle = "إشعار عند تثبيت/تحديث التطبيقات (بيتا)",
+            subtitle = L10n.t("إشعار عند تثبيت/تحديث التطبيقات (بيتا)"),
             checked = monitoring,
             onChange = vm::setMonitoring
         )
@@ -1283,10 +1291,10 @@ private fun SettingsScreen(vm: AppViewModel) {
         )
         ValueRow("TCP/IP port", "5555")
 
-        SectionTitle("مصدر الصلاحيات")
+        SectionTitle(L10n.t("مصدر الصلاحيات"))
         ValueRow(
             "ADB (Wireless debugging)",
-            if (adb.connected) "متصل" else "غير متصل"
+            if (adb.connected) L10n.t("متصل") else L10n.t("غير متصل")
         )
         ShizukuStatusRow()
         Text(
@@ -1297,10 +1305,25 @@ private fun SettingsScreen(vm: AppViewModel) {
             modifier = Modifier.padding(top = 2.dp)
         )
 
+        SectionTitle("اللغة / Language")
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Button(
+                onClick = { vm.setLanguage("ar") },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (!L10n.isEnglish) AccentGreen else CardBgAlt
+                )
+            ) { Text("العربية") }
+            Spacer(Modifier.width(8.dp))
+            OutlinedButton(onClick = { vm.setLanguage("en") }) {
+                Text("English", color = if (L10n.isEnglish) AccentGreen else TextMuted)
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+
         SectionTitle("Development")
         SwitchRow(
             title = "Beta testing",
-            subtitle = "تحديثات تجريبية وميزات مبكرة",
+            subtitle = L10n.t("تحديثات تجريبية وميزات مبكرة"),
             checked = beta,
             onChange = vm::setBeta
         )
@@ -1353,9 +1376,9 @@ private fun ShizukuStatusRow() {
     }
 
     val state = when {
-        !running -> "غير مثبّت أو غير يعمل"
-        granted -> "جاهز" + ShizukuShell.version()?.let { " (v$it)" }.orEmpty()
-        else -> "يعمل — يحتاج صلاحية"
+        !running -> L10n.t("غير مثبّت أو غير يعمل")
+        granted -> L10n.t("جاهز") + ShizukuShell.version()?.let { " (v$it)" }.orEmpty()
+        else -> L10n.t("يعمل — يحتاج صلاحية")
     }
     ValueRow("Shizuku", state)
     Row {
@@ -1363,18 +1386,18 @@ private fun ShizukuStatusRow() {
             TextButton(onClick = {
                 ShizukuShell.requestPermission()
                 granted = ShizukuShell.hasPermission()
-            }) { Text("منح صلاحية Shizuku") }
+            }) { Text(L10n.t("منح صلاحية Shizuku")) }
         }
         if (!running) {
             TextButton(onClick = {
                 val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://shizuku.rikka.app/"))
                 context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            }) { Text("تثبيت Shizuku") }
+            }) { Text(L10n.t("تثبيت Shizuku")) }
         } else {
             TextButton(onClick = {
                 running = ShizukuShell.isRunning()
                 granted = ShizukuShell.hasPermission()
-            }) { Text("تحديث الحالة") }
+            }) { Text(L10n.t("تحديث الحالة")) }
         }
     }
 }
@@ -1437,7 +1460,7 @@ private fun LibraryScreen(vm: AppViewModel, onInstall: () -> Unit) {
             ) {
                 Icon(Icons.Outlined.InstallMobile, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
-                Text("تثبيت APK / .apks لهذا الجهاز")
+                Text(L10n.t("تثبيت APK / .apks لهذا الجهاز"))
             }
             Text(
                 "هذا هو المكان الوحيد للتثبيت: اختر ملفاً من الهاتف، أو اضغط أي ملف في المكتبة لتثبيته.",
@@ -1545,7 +1568,7 @@ private fun DrawerContent(
             }
             DrawerItem(Icons.Outlined.Sync, "Sync remote data") { onSyncRemote() }
             DrawerItem(Icons.Outlined.CleaningServices, "CleanYourTV") { onNavigate("clean") }
-            DrawerItem(Icons.Outlined.Restore, "المحذوفة (استعادة)") { onNavigate("removed") }
+            DrawerItem(Icons.Outlined.Restore, L10n.t("المحذوفة (استعادة)")) { onNavigate("removed") }
             DrawerItem(Icons.Outlined.Add, "Add network device") { onAddDevice() }
             DrawerItem(Icons.Outlined.PhoneAndroid, "Connect over ADB") { onConnectSelf() }
 
@@ -1644,7 +1667,7 @@ private fun DrawerDeviceRow(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    if (device.isSelf) "هذا الجهاز" else "${device.host}:${device.port}",
+                    if (device.isSelf) L10n.t("هذا الجهاز") else "${device.host}:${device.port}",
                     color = if (active) Color(0xFFDDFBE8) else TextMuted,
                     fontSize = 11.sp
                 )
