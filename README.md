@@ -136,6 +136,15 @@
 ## البناء
 
 ```bash
+# نسخة الإصدار (مصغّرة R8، ~12MB)
+./gradlew :app:assembleRelease
+```
+
+> ملاحظة: APK الإصدار يوقّع بمفتاح debug نفسه المستخدم في الإصدارات السابقة، حتى تُثبّت التحديثات فوق النسخة الموجودة دون فقدان البيانات.
+
+## البناء
+
+```bash
 export ANDROID_HOME=$HOME/Android/Sdk
 ./gradlew :app:assembleDebug
 # APK: app/build/outputs/apk/debug/app-debug.apk
