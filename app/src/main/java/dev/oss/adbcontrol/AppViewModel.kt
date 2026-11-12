@@ -214,6 +214,31 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             .toList()
     }
 
+    /**
+     * Best-effort factory removal: drops system updates then uninstalls for user 0.
+     * True deletion of the /system copy needs root or the privileged installer flag.
+     */
+    fun deepUninstall(pkg: String) {
+        viewModelScope.launch {
+            if (!adb.state.value.canShell) {
+                emit("هذا الإجراء يحتاج ADB أو Shizuku")
+                return@launch
+            }
+            emit("جارٍ الحذف النهائي…")
+            adb.shell("pm uninstall-system-updates $pkg")
+            adb.shell("am force-stop $pkg")
+            adb.shell("pm uninstall --user 0 $pkg")
+            val stillPresent = adb.shell("pm list packages -u --user 0")
+                ?.lineSequence()
+                ?.any { it.trim() == "package:$pkg" } == true
+            emit(
+                if (!stillPresent) "تم الحذف النهائي: $pkg"
+                else "أُزيل $pkg للمستخدم — نسخة المصنع تبقى في النظام (إزالتها الكاملة تتطلب روت)"
+            )
+            reloadApps()
+        }
+    }
+
     fun restorePackage(pkg: String) {
         viewModelScope.launch {
             val out = adb.shell("pm install-existing --user 0 $pkg")
@@ -693,6 +718,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         "am start -a android.settings.APPLICATION_DETAILS_SETTINGS -d package:${app.packageName}",
                         "تم فتح معلومات التطبيق"
                     ) else openInfo(app.packageName)
+
+                AppAction.RESTORE -> restorePackage(app.packageName)
+
+                AppAction.UNINSTALL_DEEP -> deepUninstall(app.packageName)
 
                 AppAction.UNINSTALL ->
                     if (remote) shellAction(

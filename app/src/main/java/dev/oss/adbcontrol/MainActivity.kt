@@ -46,6 +46,7 @@ import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.CleaningServices
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.DeleteForever
 import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.Feedback
 import androidx.compose.material.icons.outlined.Info
@@ -159,6 +160,7 @@ private fun Root(vm: AppViewModel) {
     var showSearch by remember { mutableStateOf(false) }
     var actionsApp by remember { mutableStateOf<AppEntry?>(null) }
     var actionsUad by remember { mutableStateOf<UadInfo?>(null) }
+    var pendingDeep by remember { mutableStateOf<AppEntry?>(null) }
     var showPairing by remember { mutableStateOf(false) }
     var showAddDevice by remember { mutableStateOf(false) }
 
@@ -311,8 +313,34 @@ private fun Root(vm: AppViewModel) {
             uad = actionsUad,
             onDismiss = { actionsApp = null },
             onAction = { action ->
-                vm.perform(action, app)
+                when (action) {
+                    AppAction.UNINSTALL_DEEP -> pendingDeep = app
+                    else -> vm.perform(action, app)
+                }
                 actionsApp = null
+            }
+        )
+    }
+
+    pendingDeep?.let { app ->
+        AlertDialog(
+            onDismissRequest = { pendingDeep = null },
+            title = { Text("⚠️ حذف نهائي — لا يمكن التراجع") },
+            text = {
+                Text(
+                    "سيُحاول التطبيق إزالة تحديثات النظام ثم حذف «${app.label}» نهائياً من المستخدم 0.\n\n" +
+                        "قد يسبب توقف النظام أو فقدان ميزات. لا توجد استعادة بعد هذا الإجراء.\n\n" +
+                        "هل أنت متأكد؟"
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    vm.deepUninstall(app.packageName)
+                    pendingDeep = null
+                }) { Text("حذف نهائي", color = Danger, fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeep = null }) { Text("إلغاء") }
             }
         )
     }
@@ -813,7 +841,15 @@ private fun ActionsSheet(
             ActionItem("Clear cache (ADB)", Icons.Outlined.CleaningServices) { onAction(AppAction.CLEAR_CACHE) }
             ActionItem("Clear data (ADB)", Icons.Outlined.DeleteSweep) { onAction(AppAction.CLEAR) }
             ActionItem("Extract APK", Icons.Outlined.SaveAlt) { onAction(AppAction.EXTRACT) }
-            ActionItem("Uninstall", Icons.Outlined.Delete, danger = true) { onAction(AppAction.UNINSTALL) }
+            ActionItem("Uninstall (عادي — قابل للاستعادة)", Icons.Outlined.Delete, danger = true) {
+                onAction(AppAction.UNINSTALL)
+            }
+            ActionItem("استعادة (Install existing)", Icons.Outlined.Restore) {
+                onAction(AppAction.RESTORE)
+            }
+            ActionItem("حذف نهائي (نسخة المصنع)", Icons.Outlined.DeleteForever, danger = true) {
+                onAction(AppAction.UNINSTALL_DEEP)
+            }
             if (!adbConnected) {
                 Text(
                     "الإجراءات المعلّمة بـ ADB تحتاج اتصالاً عبر زر Connect.",
