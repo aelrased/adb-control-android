@@ -16,8 +16,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.OutputStream
 import java.net.Inet4Address
 import java.net.NetworkInterface
+import java.util.zip.CRC32
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
@@ -870,79 +872,175 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         Storage.list(getApplication())
     }
 
+    /**
+     * ADB AppControl compatible name: `<Label> (<package>) [v.<version>]`.
+     * Only characters that are invalid in a file name are removed.
+     */
+    private fun apkBaseName(label: String?, packageName: String, version: String?): String {
+        val cleaned = (label ?: "")
+            .map { ch -> if (ch.isISOControl() || ch in "<>:\"/\\|?*") ' ' else ch }
+            .joinToString("")
+            .split(Regex("\\s+"))
+            .filter { it.isNotEmpty() }
+            .joinToString(" ")
+        var base = if (cleaned.isEmpty()) packageName else "$cleaned ($packageName)"
+        val ver = version?.trim().orEmpty()
+        if (ver.isNotEmpty() && !ver.equals("null", ignoreCase = true)) base = "$base [v.$ver]"
+        if (base.length > 150) base = base.take(150)
+        return base.trimEnd(' ', '.').ifEmpty { packageName }
+    }
+
+    /** Original APK file names from `pm path` (base.apk, split_config.*.apk, …). */
+    private fun partNames(paths: List<String>): List<String> {
+        val used = HashSet<String>()
+        return paths.mapIndexed { index, path ->
+            var name = path.trimEnd('/').substringAfterLast('/')
+            if (name.isBlank()) name = if (index == 0) "base.apk" else "split$index.apk"
+            if (!name.endsWith(".apk", ignoreCase = true)) name = "$name.apk"
+            if (!used.add(name)) {
+                name = "${index}_$name"
+                used.add(name)
+            }
+            name
+        }
+    }
+
+    /**
+     * Archives the untouched APK files with their original names, without
+     * recompression (STORED), exactly like ADB AppControl's .apks output.
+     */
+    private fun writeStoredZip(out: OutputStream, parts: List<Pair<String, File>>) {
+        ZipOutputStream(out).use { zip ->
+            for ((name, file) in parts) {
+                val crc = CRC32()
+                file.inputStream().use { input ->
+                    val buffer = ByteArray(1 shl 16)
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        crc.update(buffer, 0, read)
+                    }
+                }
+                val entry = ZipEntry(name).apply {
+                    method = ZipEntry.STORED
+                    size = file.length()
+                    compressedSize = file.length()
+                    this.crc = crc.value
+                }
+                zip.putNextEntry(entry)
+                file.inputStream().use { it.copyTo(zip) }
+                zip.closeEntry()
+            }
+        }
+    }
+
+    private suspend fun remoteApkPaths(pkg: String): List<String> =
+        adb.shell("pm path $pkg")
+            ?.lines()
+            ?.mapNotNull { it.trim().removePrefix("package:").takeIf { p -> p.isNotBlank() } }
+            ?: emptyList()
+
+    /**
+     * Pulls every original APK into cache, keeping its original remote name.
+     * When a direct pull is denied (protected /data/app), the package folder is
+     * staged on shared storage first, exactly like the desktop app.
+     */
+    private suspend fun pullParts(paths: List<String>, tempDirs: MutableList<File>): List<Pair<String, File>>? {
+        val context = getApplication<Application>()
+        val temp = File(context.cacheDir, "extract-${System.currentTimeMillis()}").apply { mkdirs() }
+        tempDirs += temp
+        val names = partNames(paths)
+
+        suspend fun pullAll(): Boolean {
+            var ok = true
+            paths.forEachIndexed { index, path ->
+                if (!adb.pull(path, File(temp, names[index]))) ok = false
+            }
+            return ok && names.all { File(temp, it).isFile }
+        }
+
+        if (pullAll()) return names.map { it to File(temp, it) }
+
+        val remoteDir = paths.first().substringBeforeLast('/', "")
+        if (remoteDir.isEmpty()) return null
+        val dirName = remoteDir.trimEnd('/').substringAfterLast('/')
+        if (dirName.isEmpty()) return null
+        val staging = "/storage/emulated/0/$dirName"
+        adb.shell("rm -R $staging")
+        adb.shell("cp -r $remoteDir /storage/emulated/0")
+        val staged = try {
+            val ok = names.mapIndexed { index, name ->
+                val dest = File(temp, name)
+                adb.pull("$staging/$name", dest) && dest.isFile
+            }.all { it }
+            if (ok) names.map { it to File(temp, it) } else null
+        } finally {
+            adb.shell("rm -R $staging")
+        }
+        return staged
+    }
+
     private suspend fun extract(app: AppEntry) = withContext(Dispatchers.IO) {
         runCatching {
             val context = getApplication<Application>()
-            if (isRemote()) {
-                val paths = adb.shell("pm path ${app.packageName}")
-                    ?.lines()
-                    ?.mapNotNull { it.trim().removePrefix("package:").takeIf { p -> p.isNotBlank() } }
-                    ?: emptyList()
-                if (paths.isEmpty()) {
-                    emit("لم يتم العثور على APK على الجهاز البعيد")
-                    return@withContext
-                }
-                if (paths.size == 1) {
-                    val temp = File(context.cacheDir, "extract-${System.currentTimeMillis()}.apk")
-                    if (!adb.pull(paths.first(), temp)) {
-                        emit("فشل سحب الملف")
+            val base = apkBaseName(app.label, app.packageName, app.version)
+            val tempDirs = mutableListOf<File>()
+            try {
+                val parts: List<Pair<String, File>>? = if (isRemote()) {
+                    val paths = remoteApkPaths(app.packageName)
+                    if (paths.isEmpty()) {
+                        emit("لم يتم العثور على APK على الجهاز البعيد")
                         return@withContext
                     }
-                    val name = "${app.packageName}.apk"
-                    val uri = Storage.save(context, name, "application/vnd.android.package-archive") { out ->
-                        temp.inputStream().use { it.copyTo(out) }
+                    pullParts(paths, tempDirs).also {
+                        if (it == null) emit("فشل سحب ملفات APK")
                     }
-                    temp.delete()
-                    emit(if (uri != null) "تم الحفظ في ${Storage.displayPath}/$name" else "فشل الحفظ")
                 } else {
-                    val tempDir = File(context.cacheDir, "extract-${System.currentTimeMillis()}").apply { mkdirs() }
-                    val parts = paths.mapIndexedNotNull { index, path ->
-                        val file = File(tempDir, if (index == 0) "base.apk" else "split$index.apk")
-                        if (adb.pull(path, file)) file else null
+                    val info = runCatching {
+                        context.packageManager.getApplicationInfo(app.packageName, 0)
+                    }.getOrNull()
+                    val paths = buildList {
+                        info?.sourceDir?.let { add(it) }
+                        info?.splitSourceDirs?.let { addAll(it.toList()) }
                     }
-                    val name = "${app.packageName}.apks"
-                    val uri = Storage.save(context, name, "application/octet-stream") { out ->
-                        ZipOutputStream(out).use { zip ->
-                            parts.forEach { file ->
-                                zip.putNextEntry(ZipEntry(file.name))
-                                file.inputStream().use { it.copyTo(zip) }
-                                zip.closeEntry()
-                            }
+                    val direct = paths.map { File(it) }
+                    val readable = direct.isNotEmpty() && direct.all { file ->
+                        file.isFile && runCatching { file.inputStream().use { } }.isSuccess
+                    }
+                    if (readable) {
+                        direct.mapIndexed { index, file ->
+                            (file.name.ifBlank { "part$index.apk" }) to file
                         }
+                    } else if (paths.isNotEmpty() && adb.state.value.connected) {
+                        // Other apps' /data/app files are protected: use ADB
+                        // (a self-connection works too) like the desktop app.
+                        pullParts(paths, tempDirs)
+                    } else {
+                        emit("قراءة ملفات التطبيق تحتاج اتصال ADB (أو ربط الجهاز بنفسه)")
+                        null
                     }
-                    tempDir.deleteRecursively()
-                    emit(if (uri != null) "تم الحفظ (${parts.size} أجزاء) في ${Storage.displayPath}/$name" else "فشل الحفظ")
                 }
-            } else {
-                val info = context.packageManager.getApplicationInfo(app.packageName, 0)
-                val parts = buildList {
-                    info.sourceDir?.let { add(it) }
-                    info.splitSourceDirs?.let { addAll(it.toList()) }
-                }
-                if (parts.isEmpty()) {
-                    emit("لم يتم العثور على ملفات APK")
-                    return@withContext
-                }
+
+                if (parts.isNullOrEmpty()) return@withContext
+
                 if (parts.size == 1) {
-                    val name = "${app.packageName}.apk"
+                    val name = "$base.apk"
                     val uri = Storage.save(context, name, "application/vnd.android.package-archive") { out ->
-                        File(parts.first()).inputStream().use { it.copyTo(out) }
+                        parts.first().second.inputStream().use { it.copyTo(out) }
                     }
                     emit(if (uri != null) "تم الحفظ في ${Storage.displayPath}/$name" else "فشل الحفظ")
                 } else {
-                    val name = "${app.packageName}.apks"
+                    val name = "$base.apks"
                     val uri = Storage.save(context, name, "application/octet-stream") { out ->
-                        ZipOutputStream(out).use { zip ->
-                            parts.forEach { part ->
-                                val file = File(part)
-                                zip.putNextEntry(ZipEntry(file.name))
-                                file.inputStream().use { it.copyTo(zip) }
-                                zip.closeEntry()
-                            }
-                        }
+                        writeStoredZip(out, parts)
                     }
-                    emit(if (uri != null) "تم الحفظ (${parts.size} أجزاء) في ${Storage.displayPath}/$name" else "فشل الحفظ")
+                    emit(
+                        if (uri != null) "تم الحفظ (${parts.size} أجزاء) في ${Storage.displayPath}/$name"
+                        else "فشل الحفظ"
+                    )
                 }
+            } finally {
+                tempDirs.forEach { runCatching { it.deleteRecursively() } }
             }
         }.onFailure { emit("فشل الاستخراج: ${it.message}") }
     }

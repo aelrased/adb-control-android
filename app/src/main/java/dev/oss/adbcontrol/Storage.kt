@@ -36,6 +36,9 @@ object Storage {
             return saveLegacy(name, writer)
         }
         val resolver = context.contentResolver
+        // Match the desktop app: saving the same app again replaces the file
+        // instead of leaving "name (1).apk" duplicates behind.
+        deleteExisting(context, name)
         val values = ContentValues().apply {
             put(MediaStore.Downloads.DISPLAY_NAME, name)
             put(MediaStore.Downloads.MIME_TYPE, mime)
@@ -54,6 +57,33 @@ object Storage {
         } catch (t: Throwable) {
             runCatching { resolver.delete(uri, null, null) }
             null
+        }
+    }
+
+    private fun deleteExisting(context: Context, name: String) {
+        val resolver = context.contentResolver
+        val selection = "${MediaStore.Downloads.DISPLAY_NAME} = ? AND " +
+            "${MediaStore.Downloads.RELATIVE_PATH} LIKE ?"
+        val args = arrayOf(name, "$relativePath%")
+        runCatching {
+            resolver.query(
+                MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                arrayOf(MediaStore.Downloads._ID),
+                selection,
+                args,
+                null
+            )?.use { cursor ->
+                while (cursor.moveToNext()) {
+                    val id = cursor.getLong(0)
+                    runCatching {
+                        resolver.delete(
+                            ContentUris.withAppendedId(MediaStore.Downloads.EXTERNAL_CONTENT_URI, id),
+                            null,
+                            null
+                        )
+                    }
+                }
+            }
         }
     }
 
