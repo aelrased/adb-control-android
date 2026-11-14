@@ -2,7 +2,7 @@
 
 تطبيق أندرويد **مفتوح المصدر** لإدارة تطبيقات الجهاز عبر **ADB ذاتي** (بدون كمبيوتر)،
 
-> 🔗 **نسخة لينكس/ويندوز:** https://github.com/aelrased/adb-control-linux
+> 🔗 **نسخة سطح المكتب (لينكس/ويندوز):** https://github.com/aelrased/adb-control-desktop
 
 > **الحالة:** MVP مبني ومُختبر على Android TV 14 (onn 4K). Android 10+ (API 29)،
 > الاقتران الذاتي يتطلب Android 11+.
